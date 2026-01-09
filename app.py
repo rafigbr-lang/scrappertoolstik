@@ -12,7 +12,7 @@ import re
 
 # --- CONFIGURATION ---
 logging.getLogger("TikTokApi.tiktok").setLevel(logging.CRITICAL)
-st.set_page_config(page_title="TikTok Scalper Pro - Fix GMV Ghosting", page_icon="💰", layout="wide")
+st.set_page_config(page_title="TikTok Scalper Pro - Fix GMV Accuracy", page_icon="💰", layout="wide")
 
 @st.cache_resource
 def setup_browser():
@@ -22,10 +22,13 @@ def setup_browser():
 setup_browser()
 
 # --- UTILITY FUNCTIONS ---
-def safe_int(value):
+def clean_money_to_int(value):
+    """Mengubah format Rp762.992 atau string lainnya menjadi angka murni 762992"""
     try:
         if value is None or pd.isna(value): return 0
-        return int(float(str(value).replace('Rp', '').replace('.', '').replace(',', '').strip()))
+        # Hapus Rp, titik, koma, dan spasi
+        cleaned = re.sub(r'[^\d]', '', str(value))
+        return int(cleaned) if cleaned else 0
     except:
         return 0
 
@@ -43,19 +46,16 @@ async def get_video_info(url, api):
         if not info: return {"video_url": url, "error": "No data returned"}
 
         author = info.get("author", {})
-        author_stats = info.get("authorStats", {})
         stats = info.get("stats", {})
         video_data = info.get("video", {})
 
         return {
             "video_url": url,
             "video_id": str(info.get("id") or video_data.get("id")),
-            "unique_id": author.get("uniqueId"), # Username (Penting untuk matching)
+            "unique_id": author.get("uniqueId"), 
             "nickname": author.get("nickname"),
             "author_name": info.get("music", {}).get("authorName"),
-            "follower_count": safe_int(author_stats.get("followerCount")),
-            "like_count": safe_int(stats.get("diggCount")),
-            "play_count": safe_int(stats.get("playCount")),
+            "play_count": clean_money_to_int(stats.get("playCount")),
             "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
     except Exception as e:
@@ -75,11 +75,12 @@ async def run_scraper(video_urls, ms_token):
     return results, failed
 
 # --------- UI STREAMLIT ---------
-st.title("🚀 TikTok Scalper Pro (Anti-Wrong Match)")
+st.title("🚀 TikTok Scalper Pro (Accuracy Mode)")
 
 with st.sidebar:
     st.header("Settings")
     token = st.text_input("MS Token", type="password")
+    st.warning("Mode ini akan mengambil nilai GMV murni tanpa menjumlahkannya jika ada duplikat.")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -95,48 +96,57 @@ if uploaded_main:
     if "video_url" in df_main_input.columns:
         urls = df_main_input["video_url"].dropna().tolist()
         
-        if st.button("🚀 Run Scraping & Clean Match"):
+        if st.button("🚀 Run Scraping & Match Accurate GMV"):
             results, failed = asyncio.run(run_scraper(urls, token))
             
             if results:
                 df_scraped = pd.DataFrame(results)
                 
                 if uploaded_gmv_list:
-                    # Gabungkan semua file GMV
+                    # 1. Gabungkan semua file GMV
                     combined_gmv_list = [pd.read_excel(f) for f in uploaded_gmv_list]
-                    df_gmv_all = pd.concat(combined_gmv_list, ignore_index=True)
+                    df_gmv_raw = pd.concat(combined_gmv_list, ignore_index=True)
 
-                    # --- LOGIKA MATCHING YANG DIPERKETAT ---
-                    # 1. Ambil kolom GMV (Bukan Refunded)
-                    gmv_col = next((c for c in df_gmv_all.columns if c.strip().lower() == 'gmv'), None)
-                    link_col = next((c for c in df_gmv_all.columns if 'video link' in c.lower()), None)
-                    creator_col = next((c for c in df_gmv_all.columns if 'creator nickname' in c.lower() or 'nickname' in c.lower()), None)
+                    # 2. Identifikasi Kolom (Cari kolom GMV yang bukan 'Refunded GMV')
+                    # Kita pakai pendekatan: ambil kolom yang namanya TEPAT 'GMV'
+                    gmv_col = next((c for c in df_gmv_raw.columns if c.strip() == 'GMV'), None)
+                    link_col = next((c for c in df_gmv_raw.columns if 'video link' in c.lower()), None)
+                    nickname_col = next((c for c in df_gmv_raw.columns if 'nickname' in c.lower()), None)
 
                     if gmv_col:
-                        # Bersihkan format mata uang di file GMV
-                        df_gmv_all[gmv_col] = df_gmv_all[gmv_col].apply(lambda x: safe_int(x))
+                        # 3. Bersihkan angka GMV agar menjadi integer murni
+                        df_gmv_raw[gmv_col] = df_gmv_raw[gmv_col].apply(clean_money_to_int)
 
-                        # A. Match by Video Link (Prioritas Utama karena ID Video Unik)
+                        # --- FIX: LOGIKA ANTI-DOUBLE ---
+                        # Kita hapus duplikat di file GMV, ambil baris pertama yang muncul untuk setiap creator/video
+                        # Ini mencegah penjumlahan yang bikin angka jadi 4jt padahal aslinya 700rb
+                        
+                        # A. Match by Video ID (Sangat Akurat)
                         if link_col:
-                            df_gmv_all['v_id_match'] = df_gmv_all[link_col].apply(extract_video_id)
-                            # Agregasi agar tidak duplikat: 1 Video ID = Total GMV-nya
-                            video_map = df_gmv_all.dropna(subset=['v_id_match']).groupby('v_id_match')[gmv_col].sum()
-                            df_scraped['gmv_video'] = df_scraped['video_id'].map(video_map).fillna(0)
+                            df_gmv_raw['v_id_match'] = df_gmv_raw[link_col].apply(extract_video_id)
+                            # Buat map unik: satu video id -> satu nilai gmv
+                            video_map = df_gmv_raw.dropna(subset=['v_id_match']).drop_duplicates('v_id_match')
+                            video_dict = dict(zip(video_map['v_id_match'], video_map[gmv_col]))
+                            df_scraped['gmv_video'] = df_scraped['video_id'].map(video_dict).fillna(0)
 
-                        # B. Match by Creator Nickname (Hanya jika gmv_video masih 0)
-                        if creator_col:
-                            # Agregasi agar tidak duplikat: 1 Nickname = Total GMV-nya
-                            creator_map = df_gmv_all.dropna(subset=[creator_col]).groupby(creator_col)[gmv_col].sum()
-                            df_scraped['gmv_creator'] = df_scraped['nickname'].map(creator_map).fillna(0)
-                    
+                        # B. Match by Nickname (Hanya jika gmv_video masih 0)
+                        if nickname_col:
+                            # Buat map unik: satu nickname -> satu nilai gmv
+                            creator_map = df_gmv_raw.dropna(subset=[nickname_col]).drop_duplicates(nickname_col)
+                            creator_dict = dict(zip(creator_map[nickname_col], creator_map[gmv_col]))
+                            
+                            # Isi gmv_creator
+                            df_scraped['gmv_creator'] = df_scraped['nickname'].map(creator_dict).fillna(0)
+
                     df_final = df_scraped
                 else:
                     df_final = df_scraped
 
+                # Export ke Excel
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     df_final.to_excel(writer, index=False, sheet_name="Report")
                 
-                st.success("✅ Selesai! Data dicocokkan secara ketat (Fillna 0 jika tidak ada).")
-                st.download_button("📥 Download Report", output.getvalue(), file_name="tiktok_final_fix.xlsx")
+                st.success("✅ Selesai! Angka GMV diambil secara unik (Tidak dijumlahkan jika dobel).")
+                st.download_button("📥 Download Accurate Report", output.getvalue(), file_name="tiktok_fixed_accuracy.xlsx")
                 st.dataframe(df_final)
