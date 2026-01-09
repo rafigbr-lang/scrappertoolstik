@@ -12,7 +12,7 @@ import re
 
 # --- CONFIGURATION ---
 logging.getLogger("TikTokApi.tiktok").setLevel(logging.CRITICAL)
-st.set_page_config(page_title="TikTok Scalper Pro + GMV Matcher", page_icon="💰", layout="wide")
+st.set_page_config(page_title="TikTok Scalper Pro - Fix GMV Ghosting", page_icon="💰", layout="wide")
 
 @st.cache_resource
 def setup_browser():
@@ -24,7 +24,7 @@ setup_browser()
 # --- UTILITY FUNCTIONS ---
 def safe_int(value):
     try:
-        if value is None: return 0
+        if value is None or pd.isna(value): return 0
         return int(float(str(value).replace('Rp', '').replace('.', '').replace(',', '').strip()))
     except:
         return 0
@@ -34,11 +34,6 @@ def extract_video_id(url):
         return None
     match = re.search(r'/video/(\d+)', url)
     return match.group(1) if match else None
-
-def get_hashtags(text_extra):
-    if not text_extra: return ""
-    tags = [h.get("hashtagName") for h in text_extra if h.get("hashtagName")]
-    return ", ".join(tags)
 
 # --------- Scraping Helper ---------
 async def get_video_info(url, api):
@@ -50,31 +45,17 @@ async def get_video_info(url, api):
         author = info.get("author", {})
         author_stats = info.get("authorStats", {})
         stats = info.get("stats", {})
-        stats_v2 = info.get("statsV2", {})
-        music = info.get("music", {})
         video_data = info.get("video", {})
 
         return {
             "video_url": url,
-            "create_time": datetime.fromtimestamp(int(info.get("createTime", 0))).strftime("%Y-%m-%d %H:%M:%S") if info.get("createTime") else "N/A",
             "video_id": str(info.get("id") or video_data.get("id")),
-            "author_id": author.get("id"),
-            "unique_id": author.get("uniqueId"), 
+            "unique_id": author.get("uniqueId"), # Username (Penting untuk matching)
             "nickname": author.get("nickname"),
-            "music_title": music.get("title"),
-            "is_copyrighted": music.get("isCopyrighted"),
-            "play_url": video_data.get("playAddr"),
-            "author_name": music.get("authorName"),
-            "hashtags": get_hashtags(info.get("textExtra")),
+            "author_name": info.get("music", {}).get("authorName"),
             "follower_count": safe_int(author_stats.get("followerCount")),
-            "heart_count": safe_int(author_stats.get("heart")),
-            "video_count": safe_int(author_stats.get("videoCount")),
             "like_count": safe_int(stats.get("diggCount")),
-            "comment_count": safe_int(stats.get("commentCount")),
             "play_count": safe_int(stats.get("playCount")),
-            "collect_count": safe_int(stats_v2.get("collectCount") or stats.get("collectCount")),
-            "share_count": safe_int(stats.get("shareCount")),
-            "repost_count": safe_int(stats_v2.get("repostCount") or stats.get("repostCount")),
             "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
     except Exception as e:
@@ -83,11 +64,9 @@ async def get_video_info(url, api):
 async def run_scraper(video_urls, ms_token):
     results, failed = [], []
     progress_bar = st.progress(0)
-    status_text = st.empty()
     async with TikTokApi() as api:
         await api.create_sessions(ms_tokens=[ms_token], num_sessions=1, sleep_after=3, browser="chromium")
         for idx, url in enumerate(video_urls):
-            status_text.write(f"⏳ Processing {idx+1}/{len(video_urls)}: {url}")
             data = await get_video_info(url, api)
             if "error" in data: failed.append(data)
             else: results.append(data)
@@ -96,11 +75,11 @@ async def run_scraper(video_urls, ms_token):
     return results, failed
 
 # --------- UI STREAMLIT ---------
-st.title("🚀 TikTok Scalper Pro + GMV Matcher")
+st.title("🚀 TikTok Scalper Pro (Anti-Wrong Match)")
 
 with st.sidebar:
     st.header("Settings")
-    token = st.text_input("MS Token", type="password", value="hu02L0FHNzvsCOzu44TKmOLTeRdHzhKw7ezMAu_Rz_fs2zjXGDzxd8NHd50pKOU5CDYRP3NAa-6Frha4XeU4hiM1yKpuJv5KvHRB1n6JuPPZ2thX5b94E4A-iT6avWkzgrn73ku_9xy9UbaUNbSED8d7y3M=")
+    token = st.text_input("MS Token", type="password")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -116,7 +95,7 @@ if uploaded_main:
     if "video_url" in df_main_input.columns:
         urls = df_main_input["video_url"].dropna().tolist()
         
-        if st.button("🚀 Run Scraping & Match GMV"):
+        if st.button("🚀 Run Scraping & Clean Match"):
             results, failed = asyncio.run(run_scraper(urls, token))
             
             if results:
@@ -127,51 +106,37 @@ if uploaded_main:
                     combined_gmv_list = [pd.read_excel(f) for f in uploaded_gmv_list]
                     df_gmv_all = pd.concat(combined_gmv_list, ignore_index=True)
 
-                    # Tentukan kolom GMV dan abaikan Refunded GMV
-                    # Kita cari kolom yang namanya TEPAT 'GMV' (bukan Refunded GMV)
-                    gmv_col = None
-                    for c in df_gmv_all.columns:
-                        if c.strip().lower() == 'gmv': # Mencari kolom "GMV" saja
-                            gmv_col = c
-                            break
-                    
-                    # Jika tidak ketemu yang tepat "GMV", cari yang mengandung kata gmv tapi bukan refunded
-                    if not gmv_col:
-                        gmv_col = next((c for c in df_gmv_all.columns if 'gmv' in c.lower() and 'refunded' not in c.lower()), None)
-
+                    # --- LOGIKA MATCHING YANG DIPERKETAT ---
+                    # 1. Ambil kolom GMV (Bukan Refunded)
+                    gmv_col = next((c for c in df_gmv_all.columns if c.strip().lower() == 'gmv'), None)
                     link_col = next((c for c in df_gmv_all.columns if 'video link' in c.lower()), None)
-                    creator_col = next((c for c in df_gmv_all.columns if 'creator name' in c.lower() or 'nickname' in c.lower()), None)
+                    creator_col = next((c for c in df_gmv_all.columns if 'creator nickname' in c.lower() or 'nickname' in c.lower()), None)
 
                     if gmv_col:
-                        # 1. Matching Video ID
+                        # Bersihkan format mata uang di file GMV
+                        df_gmv_all[gmv_col] = df_gmv_all[gmv_col].apply(lambda x: safe_int(x))
+
+                        # A. Match by Video Link (Prioritas Utama karena ID Video Unik)
                         if link_col:
                             df_gmv_all['v_id_match'] = df_gmv_all[link_col].apply(extract_video_id)
-                            # Ambil nilai GMV apa adanya
-                            df_gmv_video = df_gmv_all[['v_id_match', gmv_col]].rename(columns={gmv_col: 'gmv_video'})
-                            df_scraped = pd.merge(df_scraped, df_gmv_video, left_on='video_id', right_on='v_id_match', how='left').drop(columns=['v_id_match'])
+                            # Agregasi agar tidak duplikat: 1 Video ID = Total GMV-nya
+                            video_map = df_gmv_all.dropna(subset=['v_id_match']).groupby('v_id_match')[gmv_col].sum()
+                            df_scraped['gmv_video'] = df_scraped['video_id'].map(video_map).fillna(0)
 
-                        # 2. Matching Creator Name
+                        # B. Match by Creator Nickname (Hanya jika gmv_video masih 0)
                         if creator_col:
-                            df_gmv_creator = df_gmv_all[[creator_col, gmv_col]].rename(columns={gmv_col: 'gmv_creator'})
-                            # Jika ingin mencocokkan dengan unique_id atau nickname
-                            df_scraped = pd.merge(df_scraped, df_gmv_creator, left_on='unique_id', right_on=creator_col, how='left').drop(columns=[creator_col])
-
-                    # Atur urutan kolom
-                    cols = df_scraped.columns.tolist()
-                    if 'author_name' in cols:
-                        target_idx = cols.index('author_name') + 1
-                        for col_name in ['gmv_video', 'gmv_creator']:
-                            if col_name in cols:
-                                cols.insert(target_idx, cols.pop(cols.index(col_name)))
-                    df_final = df_scraped[cols]
+                            # Agregasi agar tidak duplikat: 1 Nickname = Total GMV-nya
+                            creator_map = df_gmv_all.dropna(subset=[creator_col]).groupby(creator_col)[gmv_col].sum()
+                            df_scraped['gmv_creator'] = df_scraped['nickname'].map(creator_map).fillna(0)
+                    
+                    df_final = df_scraped
                 else:
                     df_final = df_scraped
 
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     df_final.to_excel(writer, index=False, sheet_name="Report")
-                    if failed: pd.DataFrame(failed).to_excel(writer, index=False, sheet_name="Failed")
                 
-                st.success("✅ Selesai! Menggunakan nilai GMV murni (Refunded GMV diabaikan).")
-                st.download_button("📥 Download Integrated Report", output.getvalue(), file_name="tiktok_final_report.xlsx")
+                st.success("✅ Selesai! Data dicocokkan secara ketat (Fillna 0 jika tidak ada).")
+                st.download_button("📥 Download Report", output.getvalue(), file_name="tiktok_final_fix.xlsx")
                 st.dataframe(df_final)
