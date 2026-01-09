@@ -8,10 +8,11 @@ import logging
 from datetime import datetime
 import io
 import subprocess
+import re
 
 # --- CONFIGURATION ---
 logging.getLogger("TikTokApi.tiktok").setLevel(logging.CRITICAL)
-st.set_page_config(page_title="TikTok Scalper Pro", page_icon="📊", layout="wide")
+st.set_page_config(page_title="TikTok Scalper Pro + GMV Link Matcher", page_icon="💰", layout="wide")
 
 @st.cache_resource
 def setup_browser():
@@ -24,9 +25,16 @@ setup_browser()
 def safe_int(value):
     try:
         if value is None: return 0
-        return int(value)
+        return int(float(value))
     except:
         return 0
+
+def extract_video_id(url):
+    """Mengekstrak ID angka dari link TikTok (setelah /video/)"""
+    if pd.isna(url) or not isinstance(url, str):
+        return None
+    match = re.search(r'/video/(\d+)', url)
+    return match.group(1) if match else None
 
 def get_hashtags(text_extra):
     if not text_extra: return ""
@@ -40,9 +48,8 @@ async def get_video_info(url, api):
         info = await video.info()
         
         if not info:
-            return {"video_url": url, "error": "No data returned from TikTok"}
+            return {"video_url": url, "error": "No data returned"}
 
-        # Extraction Logic
         author = info.get("author", {})
         author_stats = info.get("authorStats", {})
         stats = info.get("stats", {})
@@ -50,18 +57,16 @@ async def get_video_info(url, api):
         music = info.get("music", {})
         video_data = info.get("video", {})
 
-        # Date Formatting
         raw_time = info.get("createTime", 0)
         try:
             formatted_time = datetime.fromtimestamp(int(raw_time)).strftime("%Y-%m-%d %H:%M:%S")
         except:
             formatted_time = "N/A"
 
-        # Mapping 21 Kolom yang diminta
         return {
             "video_url": url,
             "create_time": formatted_time,
-            "video_id": info.get("id") or video_data.get("id"),
+            "video_id": str(info.get("id") or video_data.get("id")),
             "author_id": author.get("id"),
             "unique_id": author.get("uniqueId"),
             "nickname": author.get("nickname"),
@@ -103,40 +108,79 @@ async def run_scraper(video_urls, ms_token):
                 results.append(data)
             
             progress_bar.progress((idx + 1) / len(video_urls))
-            await asyncio.sleep(2) 
+            await asyncio.sleep(1)
             
     return results, failed
 
 # --------- UI STREAMLIT ---------
-st.title("🚀 TikTok Scalper Dashboard")
+st.title("🚀 TikTok Scalper Dashboard + GMV Link Matcher")
 
 with st.sidebar:
     st.header("Settings")
     token = st.text_input("MS Token", type="password", value="hu02L0FHNzvsCOzu44TKmOLTeRdHzhKw7ezMAu_Rz_fs2zjXGDzxd8NHd50pKOU5CDYRP3NAa-6Frha4XeU4hiM1yKpuJv5KvHRB1n6JuPPZ2thX5b94E4A-iT6avWkzgrn73ku_9xy9UbaUNbSED8d7y3M=")
-    st.info("Input file Excel harus memiliki kolom 'video_url'")
 
-uploaded_file = st.file_uploader("Upload Input Excel", type=["xlsx"])
+col1, col2 = st.columns(2)
 
-if uploaded_file:
-    df_in = pd.read_excel(uploaded_file)
-    if "video_url" in df_in.columns:
-        urls = df_in["video_url"].dropna().tolist()
-        st.success(f"Ready to scrape {len(urls)} videos")
+with col1:
+    st.subheader("1. File Input Scraper")
+    uploaded_main = st.file_uploader("Upload Excel (Kolom: video_url)", type=["xlsx"])
+
+with col2:
+    st.subheader("2. File Data GMV")
+    uploaded_gmv = st.file_uploader("Upload Excel GMV (Kolom link & gmv)", type=["xlsx"])
+
+if uploaded_main:
+    df_main_input = pd.read_excel(uploaded_main)
+    
+    if "video_url" in df_main_input.columns:
+        urls = df_main_input["video_url"].dropna().tolist()
         
-        if st.button("Start Scraping"):
-            res, fail = asyncio.run(run_scraper(urls, token))
+        if st.button("🚀 Jalankan Scraping & Match GMV"):
+            # 1. Scraping Data
+            results, failed = asyncio.run(run_scraper(urls, token))
             
-            # Create Excel output
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                if res: pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Success")
-                if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Failed")
-            
-            st.divider()
-            st.download_button("📥 Download Scraped Data", output.getvalue(), file_name="tiktok_full_results.xlsx")
-            
-            if res:
-                st.subheader("Results Preview")
-                st.dataframe(pd.DataFrame(res))
-    else:
-        st.error("Column 'video_url' not found!")
+            if results:
+                df_scraped = pd.DataFrame(results)
+                
+                # 2. Proses File GMV (Ekstrak ID dari link)
+                if uploaded_gmv:
+                    df_gmv = pd.read_excel(uploaded_gmv)
+                    
+                    # Cari kolom yang berisi link tiktok secara dinamis (biasanya ada kata 'link' atau 'video')
+                    # Jika nama kolomnya spesifik, ganti 'Video link' sesuai file kamu
+                    link_col = next((c for c in df_gmv.columns if 'link' in c.lower() or 'url' in c.lower()), None)
+                    gmv_col = next((c for c in df_gmv.columns if 'gmv' in c.lower()), None)
+                    
+                    if link_col and gmv_col:
+                        st.info(f"Matching menggunakan kolom: '{link_col}' dan '{gmv_col}'")
+                        
+                        # Ekstrak ID dari link di file GMV
+                        df_gmv['video_id_extracted'] = df_gmv[link_col].apply(extract_video_id)
+                        
+                        # Pastikan tipe data string agar match sempurna
+                        df_scraped['video_id'] = df_scraped['video_id'].astype(str)
+                        df_gmv['video_id_extracted'] = df_gmv['video_id_extracted'].astype(str)
+                        
+                        # Gabungkan (Merge)
+                        df_final = pd.merge(
+                            df_scraped, 
+                            df_gmv[['video_id_extracted', gmv_col]], 
+                            left_on='video_id', 
+                            right_on='video_id_extracted', 
+                            how='left'
+                        ).drop(columns=['video_id_extracted'])
+                    else:
+                        st.error("Kolom 'link' atau 'gmv' tidak ditemukan di file GMV.")
+                        df_final = df_scraped
+                else:
+                    df_final = df_scraped
+                
+                # 3. Download
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_final.to_excel(writer, index=False, sheet_name="Hasil_Integrasi")
+                    if failed: pd.DataFrame(failed).to_excel(writer, index=False, sheet_name="Gagal")
+                
+                st.success("✅ Proses Selesai!")
+                st.download_button("📥 Download Integrated Report", output.getvalue(), file_name="tiktok_integrated_gmv.xlsx")
+                st.dataframe(df_final)
