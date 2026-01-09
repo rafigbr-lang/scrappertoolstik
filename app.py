@@ -12,7 +12,7 @@ import re
 
 # --- CONFIGURATION ---
 logging.getLogger("TikTokApi.tiktok").setLevel(logging.CRITICAL)
-st.set_page_config(page_title="TikTok Scalper Pro + GMV Link Matcher", page_icon="💰", layout="wide")
+st.set_page_config(page_title="TikTok Scalper Pro + Multi GMV", page_icon="💰", layout="wide")
 
 @st.cache_resource
 def setup_browser():
@@ -113,7 +113,7 @@ async def run_scraper(video_urls, ms_token):
     return results, failed
 
 # --------- UI STREAMLIT ---------
-st.title("🚀 TikTok Scalper Dashboard + GMV Link Matcher")
+st.title("🚀 TikTok Scalper Pro + Multi-GMV Integrator")
 
 with st.sidebar:
     st.header("Settings")
@@ -123,11 +123,11 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("1. File Input Scraper")
-    uploaded_main = st.file_uploader("Upload Excel (Kolom: video_url)", type=["xlsx"])
+    uploaded_main = st.file_uploader("Upload Excel (video_url)", type=["xlsx"], key="main")
 
 with col2:
-    st.subheader("2. File Data GMV")
-    uploaded_gmv = st.file_uploader("Upload Excel GMV (Kolom link & gmv)", type=["xlsx"])
+    st.subheader("2. File Data GMV (Bisa Banyak)")
+    uploaded_gmv_list = st.file_uploader("Upload satu atau banyak file GMV", type=["xlsx"], accept_multiple_files=True, key="gmv_multi")
 
 if uploaded_main:
     df_main_input = pd.read_excel(uploaded_main)
@@ -135,52 +135,67 @@ if uploaded_main:
     if "video_url" in df_main_input.columns:
         urls = df_main_input["video_url"].dropna().tolist()
         
-        if st.button("🚀 Jalankan Scraping & Match GMV"):
-            # 1. Scraping Data
+        if st.button("🚀 Run Scraping & Merge All GMV"):
+            # 1. Scraping
             results, failed = asyncio.run(run_scraper(urls, token))
             
             if results:
                 df_scraped = pd.DataFrame(results)
                 
-                # 2. Proses File GMV (Ekstrak ID dari link)
-                if uploaded_gmv:
-                    df_gmv = pd.read_excel(uploaded_gmv)
+                # 2. Multi-GMV Integration
+                if uploaded_gmv_list:
+                    all_gmv_dfs = []
+                    for uploaded_file in uploaded_gmv_list:
+                        temp_df = pd.read_excel(uploaded_file)
+                        all_gmv_dfs.append(temp_df)
                     
-                    # Cari kolom yang berisi link tiktok secara dinamis (biasanya ada kata 'link' atau 'video')
-                    # Jika nama kolomnya spesifik, ganti 'Video link' sesuai file kamu
-                    link_col = next((c for c in df_gmv.columns if 'link' in c.lower() or 'url' in c.lower()), None)
-                    gmv_col = next((c for c in df_gmv.columns if 'gmv' in c.lower()), None)
+                    # Gabungkan semua file GMV jadi satu
+                    df_gmv_combined = pd.concat(all_gmv_dfs, ignore_index=True)
+                    
+                    # Deteksi kolom
+                    link_col = next((c for c in df_gmv_combined.columns if 'video link' in c.lower()), None)
+                    gmv_col = next((c for c in df_gmv_combined.columns if 'gmv' in c.lower()), None)
                     
                     if link_col and gmv_col:
-                        st.info(f"Matching menggunakan kolom: '{link_col}' dan '{gmv_col}'")
+                        # Ekstrak ID
+                        df_gmv_combined['video_id_extracted'] = df_gmv_combined[link_col].apply(extract_video_id)
                         
-                        # Ekstrak ID dari link di file GMV
-                        df_gmv['video_id_extracted'] = df_gmv[link_col].apply(extract_video_id)
+                        # Hapus duplikat ID jika ada video yang muncul di dua file berbeda (ambil data terbaru/teratas)
+                        df_gmv_combined = df_gmv_combined.drop_duplicates(subset=['video_id_extracted'], keep='first')
                         
-                        # Pastikan tipe data string agar match sempurna
                         df_scraped['video_id'] = df_scraped['video_id'].astype(str)
-                        df_gmv['video_id_extracted'] = df_gmv['video_id_extracted'].astype(str)
+                        df_gmv_combined['video_id_extracted'] = df_gmv_combined['video_id_extracted'].astype(str)
                         
-                        # Gabungkan (Merge)
-                        df_final = pd.merge(
+                        # Merge
+                        df_merge = pd.merge(
                             df_scraped, 
-                            df_gmv[['video_id_extracted', gmv_col]], 
+                            df_gmv_combined[['video_id_extracted', gmv_col]], 
                             left_on='video_id', 
                             right_on='video_id_extracted', 
                             how='left'
                         ).drop(columns=['video_id_extracted'])
+                        
+                        # Atur posisi kolom GMV setelah author_name
+                        cols = df_merge.columns.tolist()
+                        if gmv_col in cols:
+                            idx = cols.index('author_name') + 1
+                            cols.insert(idx, cols.pop(cols.index(gmv_col)))
+                            df_final = df_merge[cols]
+                        else:
+                            df_final = df_merge
                     else:
-                        st.error("Kolom 'link' atau 'gmv' tidak ditemukan di file GMV.")
+                        st.warning("Kolom 'Video link' atau 'GMV' tidak ditemukan di file-file yang diupload.")
                         df_final = df_scraped
                 else:
                     df_final = df_scraped
-                
-                # 3. Download
+                    st.warning("Tidak ada file GMV yang diupload.")
+
+                # 3. Output
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_final.to_excel(writer, index=False, sheet_name="Hasil_Integrasi")
-                    if failed: pd.DataFrame(failed).to_excel(writer, index=False, sheet_name="Gagal")
+                    df_final.to_excel(writer, index=False, sheet_name="Integrated_Report")
+                    if failed: pd.DataFrame(failed).to_excel(writer, index=False, sheet_name="Failed")
                 
-                st.success("✅ Proses Selesai!")
-                st.download_button("📥 Download Integrated Report", output.getvalue(), file_name="tiktok_integrated_gmv.xlsx")
+                st.success(f"✅ Selesai! Menggabungkan data dari {len(uploaded_gmv_list)} file GMV.")
+                st.download_button("📥 Download Final Report", output.getvalue(), file_name="tiktok_multi_gmv_report.xlsx")
                 st.dataframe(df_final)
