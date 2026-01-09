@@ -1,77 +1,80 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="TikTok GMV Recapper", layout="wide")
+st.set_page_config(page_title="TikTok GMV Bulk Search", layout="wide")
 
-st.title("📊 TikTok Campaign GMV Recapper")
-st.write("Unggah beberapa file campaign untuk melihat total performa creator.")
+st.title("📊 TikTok Campaign GMV Bulk Recapper")
+st.write("Upload file campaign, lalu masukkan daftar username untuk filter cepat.")
 
-# 1. Sidebar untuk Pengaturan Kolom
+# 1. Sidebar - Pengaturan Nama Kolom
 st.sidebar.header("Pengaturan Kolom")
-name_col = st.sidebar.text_input("Nama Kolom Creator", value="Creator Name")
+name_col = st.sidebar.text_input("Nama Kolom Username/Creator", value="Creator Name")
 gmv_col = st.sidebar.text_input("Nama Kolom GMV", value="GMV")
 
-# 2. Upload File (Bisa banyak file sekaligus)
+# 2. Upload File (Multi-file)
 uploaded_files = st.file_uploader("Pilih file Excel atau CSV", accept_multiple_files=True, type=['csv', 'xlsx'])
 
 if uploaded_files:
     all_data = []
-    
     for file in uploaded_files:
         try:
-            if file.name.endswith('.csv'):
-                df = pd.read_csv(file)
-            else:
-                df = pd.read_excel(file)
-            
-            # Tambahkan kolom keterangan nama file agar tahu dari campaign mana
-            df['Source Campaign'] = file.name
+            df = pd.read_csv(file) if file.name.endswith('.csv') else pd.read_excel(file)
+            df['Source Campaign'] = file.name # Tandai asal file
             all_data.append(df)
         except Exception as e:
             st.error(f"Gagal membaca file {file.name}: {e}")
 
     if all_data:
-        # Gabungkan semua data menjadi satu dataframe
         combined_df = pd.concat(all_data, ignore_index=True)
         
-        # Bersihkan data GMV (jika ada karakter mata uang atau koma)
+        # Bersihkan format GMV agar jadi angka
         if combined_df[gmv_col].dtype == 'object':
             combined_df[gmv_col] = combined_df[gmv_col].replace(r'[\$,R p.]', '', regex=True).astype(float)
 
-        # 3. Fitur Pencarian & Rekap
         st.divider()
-        search_query = st.text_input("🔍 Cari Nama Creator / Username (Kosongkan untuk lihat semua)")
 
-        # Grouping Data
+        # 3. Fitur Input Banyak Username (Copy-Paste)
+        st.subheader("🔍 Pencarian Banyak Username")
+        input_usernames = st.text_area("Copy-paste daftar username di sini (satu username per baris):", height=150)
+
+        # Proses daftar username
+        list_search = [name.strip() for name in input_usernames.split('\n') if name.strip() != ""]
+
+        # 4. Grouping Data (Total GMV per Creator)
         recap_df = combined_df.groupby(name_col).agg({
             gmv_col: 'sum',
-            'Source Campaign': 'count'
-        }).rename(columns={'Source Campaign': 'Total Campaign Content'}).reset_index()
+            'Source Campaign': lambda x: ", ".join(x.unique()) # List campaign yang diikuti
+        }).reset_index()
 
-        # Filter berdasarkan pencarian
-        if search_query:
-            recap_df = recap_df[recap_df[name_col].str.contains(search_query, case=False, na=False)]
+        # 5. Filter Berdasarkan List Username
+        if list_search:
+            # Menggunakan isin() untuk mencocokkan banyak nama sekaligus
+            final_df = recap_df[recap_df[name_col].isin(list_search)]
+            
+            # Cek jika ada username yang dicari tapi tidak ditemukan di data
+            found_names = final_df[name_col].tolist()
+            not_found = [n for n in list_search if n not in found_names]
+            
+            if not_found:
+                st.warning(f"Ada {len(not_found)} username tidak ditemukan dalam file data.")
+                with st.expander("Lihat username yang tidak ditemukan"):
+                    st.write(not_found)
+        else:
+            final_df = recap_df # Jika kosong, tampilkan semua
 
-        # 4. Tampilan Hasil
-        col1, col2 = st.columns([2, 1])
+        # 6. Tampilkan Hasil
+        st.subheader(f"Hasil Rekap ({len(final_df)} Creator)")
         
+        col1, col2 = st.columns([3, 1])
         with col1:
-            st.subheader("Tabel Rekapitulasi")
-            st.dataframe(recap_df.sort_values(by=gmv_col, ascending=False), use_container_width=True)
-
+            st.dataframe(final_df.sort_values(by=gmv_col, ascending=False), use_container_width=True)
+        
         with col2:
-            st.subheader("Total GMV Keseluruhan")
-            total_all = recap_df[gmv_col].sum()
-            st.metric("Grand Total", f"Rp {total_all:,.0f}")
-            st.write(f"Jumlah Creator Unik: {len(recap_df)}")
+            total_gmv = final_df[gmv_col].sum()
+            st.metric("Total GMV Group", f"Rp {total_gmv:,.0f}")
+            
+            csv = final_df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download Hasil (.csv)", csv, "recap_search.csv", "text/csv")
 
-        # 5. Download Hasil Rekap
-        csv = recap_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Hasil Rekap (.csv)",
-            data=csv,
-            file_name="recap_gmv_tiktok.csv",
-            mime="text/csv",
-        )
 else:
-    st.info("Silakan unggah satu atau lebih file campaign untuk memulai.")
+    st.info("Silakan unggah file campaign terlebih dahulu.")
