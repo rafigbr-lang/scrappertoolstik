@@ -5,7 +5,6 @@ from TikTokApi import TikTokApi
 import os
 from datetime import datetime
 import io
-import sys
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="TikTok Data Scalper", page_icon="📊", layout="wide")
@@ -20,9 +19,8 @@ async def get_video_info(url, api):
         info = await video.info()
 
         if not info or "author" not in info:
-            return {"video_url": url, "error": "Video tidak ditemukan/Private"}
+            return {"video_url": url, "error": "Video tidak ditemukan/Private atau Token Expired"}
 
-        # Mengambil data statistik
         stats = info.get("stats", {})
         author_stats = info.get("authorStats", {})
         
@@ -45,43 +43,35 @@ async def get_video_info(url, api):
         return {"video_url": url, "error": str(e)}
 
 # --- UI STREAMLIT ---
-st.title("📱 TikTok Data Scalper Professional")
-st.markdown("""
-Aplikasi ini mengambil data statistik video TikTok secara otomatis dari file Excel.
-1. Upload file Excel yang memiliki kolom **`video_url`**.
-2. Klik tombol 'Mulai Scraping'.
-3. Download hasilnya.
-""")
+st.title("📱 TikTok Data Scalper")
+st.markdown("Upload file Excel dengan kolom **`video_url`**.")
 
 uploaded_file = st.file_uploader("Upload File Excel (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
-    # Load data awal
     df_input = pd.read_excel(uploaded_file)
     
     if "video_url" not in df_input.columns:
-        st.error("❌ Kolom 'video_url' tidak ditemukan dalam file!")
+        st.error("❌ Kolom 'video_url' tidak ditemukan!")
     else:
         urls = df_input["video_url"].dropna().tolist()
-        st.success(f"📂 File terbaca! Menemukan {len(urls)} link video.")
+        st.success(f"📂 Menemukan {len(urls)} link video.")
         
         if st.button("🚀 Mulai Scraping"):
             results = []
             failed = []
             
-            # Progress Bar
             progress_bar = st.progress(0)
             status_text = st.empty()
 
             async def run_scraper():
                 try:
                     async with TikTokApi() as api:
-                        # Inisialisasi session dengan argumen untuk server
+                        # PERBAIKAN: Menghapus browser_args yang menyebabkan error
                         await api.create_sessions(
                             ms_tokens=[MS_TOKEN], 
                             num_sessions=1, 
-                            sleep_after=2,
-                            browser_args=["--no-sandbox", "--disable-dev-shm-usage"]
+                            sleep_after=3
                         )
                         
                         for idx, url in enumerate(urls):
@@ -93,27 +83,25 @@ if uploaded_file:
                             else:
                                 results.append(data)
                             
-                            # Update progress
                             progress_bar.progress((idx + 1) / len(urls))
+                            # Tambahan delay kecil agar tidak terdeteksi bot
+                            await asyncio.sleep(1)
                             
                 except Exception as e:
-                    st.error(f"Terjadi kesalahan pada koneksi TikTok: {e}")
+                    st.error(f"Terjadi kesalahan: {e}")
                 
                 return results, failed
 
-            # Jalankan Async Loop
-            with st.spinner("Harap tunggu, sedang mengambil data..."):
+            with st.spinner("Sedang mengambil data..."):
                 success_data, failed_data = asyncio.run(run_scraper())
             
-            # --- HASIL ---
             st.divider()
-            st.subheader("📊 Hasil Scraping")
             
             if success_data:
                 df_final = pd.DataFrame(success_data)
-                st.dataframe(df_final, use_container_width=True)
+                st.subheader("📊 Hasil Berhasil")
+                st.dataframe(df_final)
                 
-                # Download Button
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_final.to_excel(writer, index=False, sheet_name='Success')
@@ -123,12 +111,10 @@ if uploaded_file:
                 st.download_button(
                     label="📥 Download Hasil (.xlsx)",
                     data=buffer.getvalue(),
-                    file_name=f"tiktok_scraped_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    file_name=f"tiktok_results.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-            else:
-                st.warning("Tidak ada data yang berhasil diambil. Cek koneksi atau token.")
-
+            
             if failed_data:
                 with st.expander("Lihat URL yang Gagal"):
-                    st.table(pd.DataFrame(failed_data))
+                    st.write(pd.DataFrame(failed_data))
