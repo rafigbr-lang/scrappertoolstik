@@ -1,6 +1,5 @@
 streamlit
-TikTokApi
 pandas
 openpyxl
+TikTokApi
 playwright
-playwright-stealth
