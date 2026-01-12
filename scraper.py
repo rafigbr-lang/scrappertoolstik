@@ -1,120 +1,142 @@
 import streamlit as st
+from TikTokApi import TikTokApi
 import pandas as pd
 import asyncio
-from TikTokApi import TikTokApi
 import os
+import sys
+import logging
 from datetime import datetime
 import io
+import subprocess
 
-# --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="TikTok Data Scalper", page_icon="📊", layout="wide")
+# --- CONFIGURATION ---
+logging.getLogger("TikTokApi.tiktok").setLevel(logging.CRITICAL)
+st.set_page_config(page_title="TikTok Scalper Pro", page_icon="📊", layout="wide")
 
-# Masukkan ms_token kamu di sini
-MS_TOKEN = 'hu02L0FHNzvsCOzu44TKmOLTeRdHzhKw7ezMAu_Rz_fs2zjXGDzxd8NHd50pKOU5CDYRP3NAa-6Frha4XeU4hiM1yKpuJv5KvHRB1n6JuPPZ2thX5b94E4A-iT6avWkzgrn73ku_9xy9UbaUNbSED8d7y3M='
+@st.cache_resource
+def setup_browser():
+    subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"])
+    return True
 
-# --- HELPER: SCRAPING ---
+setup_browser()
+
+# --- UTILITY FUNCTIONS ---
+def safe_int(value):
+    try:
+        if value is None: return 0
+        return int(value)
+    except:
+        return 0
+
+def get_hashtags(text_extra):
+    if not text_extra: return ""
+    tags = [h.get("hashtagName") for h in text_extra if h.get("hashtagName")]
+    return ", ".join(tags)
+
+# --------- Scraping Helper ---------
 async def get_video_info(url, api):
     try:
         video = api.video(url=url)
         info = await video.info()
-
-        if not info or "author" not in info:
-            return {"video_url": url, "error": "Video tidak ditemukan/Private atau Token Expired"}
-
-        stats = info.get("stats", {})
-        author_stats = info.get("authorStats", {})
         
+        if not info:
+            return {"video_url": url, "error": "No data returned from TikTok"}
+
+        # Extraction Logic
+        author = info.get("author", {})
+        author_stats = info.get("authorStats", {})
+        stats = info.get("stats", {})
+        stats_v2 = info.get("statsV2", {})
+        music = info.get("music", {})
+        video_data = info.get("video", {})
+
+        # Date Formatting
+        raw_time = info.get("createTime", 0)
+        try:
+            formatted_time = datetime.fromtimestamp(int(raw_time)).strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            formatted_time = "N/A"
+
+        # Mapping 21 Kolom yang diminta
         return {
             "video_url": url,
-            "video_id": info.get("id"),
-            "create_time": datetime.fromtimestamp(info.get("createTime", 0)).strftime("%Y-%m-%d %H:%M:%S"),
-            "author_unique_id": info.get("author", {}).get("uniqueId"),
-            "author_nickname": info.get("author", {}).get("nickname"),
-            "follower_count": int(author_stats.get("followerCount", 0)),
-            "play_count": int(stats.get("playCount", 0)),
-            "like_count": int(stats.get("diggCount", 0)),
-            "comment_count": int(stats.get("commentCount", 0)),
-            "share_count": int(stats.get("shareCount", 0)),
-            "collect_count": int(stats.get("collectCount", 0)),
-            "hashtags": ", ".join([h["hashtagName"] for h in info.get("textExtra", []) if h.get("hashtagName")]),
+            "create_time": formatted_time,
+            "video_id": info.get("id") or video_data.get("id"),
+            "author_id": author.get("id"),
+            "unique_id": author.get("uniqueId"),
+            "nickname": author.get("nickname"),
+            "music_title": music.get("title"),
+            "is_copyrighted": music.get("isCopyrighted"),
+            "play_url": video_data.get("playAddr"),
+            "author_name": music.get("authorName"),
+            "hashtags": get_hashtags(info.get("textExtra")),
+            "follower_count": safe_int(author_stats.get("followerCount")),
+            "heart_count": safe_int(author_stats.get("heart")),
+            "video_count": safe_int(author_stats.get("videoCount")),
+            "like_count": safe_int(stats.get("diggCount")),
+            "comment_count": safe_int(stats.get("commentCount")),
+            "play_count": safe_int(stats.get("playCount")),
+            "collect_count": safe_int(stats_v2.get("collectCount") or stats.get("collectCount")),
+            "share_count": safe_int(stats.get("shareCount")),
+            "repost_count": safe_int(stats_v2.get("repostCount") or stats.get("repostCount")),
             "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
     except Exception as e:
         return {"video_url": url, "error": str(e)}
 
-# --- UI STREAMLIT ---
-st.title("📱 TikTok Data Scalper")
-st.markdown("Upload file Excel dengan kolom **`video_url`**.")
+# --------- Scraper Engine ---------
+async def run_scraper(video_urls, ms_token):
+    results, failed = [], []
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    async with TikTokApi() as api:
+        await api.create_sessions(ms_tokens=[ms_token], num_sessions=1, sleep_after=3, browser="chromium")
 
-uploaded_file = st.file_uploader("Upload File Excel (.xlsx)", type=["xlsx"])
+        for idx, url in enumerate(video_urls):
+            status_text.write(f"⏳ Processing {idx+1}/{len(video_urls)}: {url}")
+            data = await get_video_info(url, api)
+            
+            if "error" in data:
+                failed.append(data)
+            else:
+                results.append(data)
+            
+            progress_bar.progress((idx + 1) / len(video_urls))
+            await asyncio.sleep(2) 
+            
+    return results, failed
+
+# --------- UI STREAMLIT ---------
+st.title("🚀 TikTok Scalper Dashboard")
+
+with st.sidebar:
+    st.header("Settings")
+    token = st.text_input("MS Token", type="password", value="hu02L0FHNzvsCOzu44TKmOLTeRdHzhKw7ezMAu_Rz_fs2zjXGDzxd8NHd50pKOU5CDYRP3NAa-6Frha4XeU4hiM1yKpuJv5KvHRB1n6JuPPZ2thX5b94E4A-iT6avWkzgrn73ku_9xy9UbaUNbSED8d7y3M=")
+    st.info("Input file Excel harus memiliki kolom 'video_url'")
+
+uploaded_file = st.file_uploader("Upload Input Excel", type=["xlsx"])
 
 if uploaded_file:
-    df_input = pd.read_excel(uploaded_file)
-    
-    if "video_url" not in df_input.columns:
-        st.error("❌ Kolom 'video_url' tidak ditemukan!")
-    else:
-        urls = df_input["video_url"].dropna().tolist()
-        st.success(f"📂 Menemukan {len(urls)} link video.")
+    df_in = pd.read_excel(uploaded_file)
+    if "video_url" in df_in.columns:
+        urls = df_in["video_url"].dropna().tolist()
+        st.success(f"Ready to scrape {len(urls)} videos")
         
-        if st.button("🚀 Mulai Scraping"):
-            results = []
-            failed = []
+        if st.button("Start Scraping"):
+            res, fail = asyncio.run(run_scraper(urls, token))
             
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
-            async def run_scraper():
-                try:
-                    async with TikTokApi() as api:
-                        # PERBAIKAN: Menghapus browser_args yang menyebabkan error
-                        await api.create_sessions(
-                            ms_tokens=[MS_TOKEN], 
-                            num_sessions=1, 
-                            sleep_after=3
-                        )
-                        
-                        for idx, url in enumerate(urls):
-                            status_text.text(f"Processing ({idx+1}/{len(urls)}): {url}")
-                            data = await get_video_info(url, api)
-                            
-                            if "error" in data:
-                                failed.append(data)
-                            else:
-                                results.append(data)
-                            
-                            progress_bar.progress((idx + 1) / len(urls))
-                            # Tambahan delay kecil agar tidak terdeteksi bot
-                            await asyncio.sleep(1)
-                            
-                except Exception as e:
-                    st.error(f"Terjadi kesalahan: {e}")
-                
-                return results, failed
-
-            with st.spinner("Sedang mengambil data..."):
-                success_data, failed_data = asyncio.run(run_scraper())
+            # Create Excel output
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                if res: pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Success")
+                if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Failed")
             
             st.divider()
+            st.download_button("📥 Download Scraped Data", output.getvalue(), file_name="tiktok_full_results.xlsx")
             
-            if success_data:
-                df_final = pd.DataFrame(success_data)
-                st.subheader("📊 Hasil Berhasil")
-                st.dataframe(df_final)
-                
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_final.to_excel(writer, index=False, sheet_name='Success')
-                    if failed_data:
-                        pd.DataFrame(failed_data).to_excel(writer, index=False, sheet_name='Failed')
-                
-                st.download_button(
-                    label="📥 Download Hasil (.xlsx)",
-                    data=buffer.getvalue(),
-                    file_name=f"tiktok_results.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            
-            if failed_data:
-                with st.expander("Lihat URL yang Gagal"):
-                    st.write(pd.DataFrame(failed_data))
+            if res:
+                st.subheader("Results Preview")
+                st.dataframe(pd.DataFrame(res))
+    else:
+        st.error("Column 'video_url' not found!")
