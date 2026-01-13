@@ -1,84 +1,109 @@
 import streamlit as st
 from playwright.sync_api import sync_playwright
+import os
 import subprocess
 import time
 
-# Fungsi instalasi browser
-def install_playwright_browsers():
-    try:
-        subprocess.run(["playwright", "install", "chromium"], check=True)
-    except Exception as e:
-        st.error(f"Gagal menginstal browser: {e}")
+# --- KONFIGURASI HALAMAN ---
+st.set_page_config(page_title="Shopee Video Downloader", page_icon="🧡")
 
-def scrape_shopee_video(url):
+# --- FUNGSI INSTALASI (CRITICAL) ---
+def ensure_playwright_installed():
+    """Memastikan browser Chromium terpasang di server Streamlit."""
+    try:
+        # Kita cek apakah chromium ada, jika tidak, kita install
+        subprocess.run(["playwright", "install", "chromium"], check=True)
+        return True
+    except Exception as e:
+        st.error(f"Gagal inisialisasi browser: {e}")
+        return False
+
+# --- FUNGSI SCRAPER ---
+def get_shopee_video(url):
     with sync_playwright() as p:
-        # Launch browser
-        browser = p.chromium.launch(headless=True)
+        # Argumen 'args' sangat penting untuk lingkungan Cloud/Docker
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
+        )
         
-        # Menggunakan User Agent Mobile agar lebih ringan
+        # Simulasi perangkat mobile (lebih ringan & seringkali bypass proteksi awal)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+            user_agent="Mozilla/5.0 (Linux; Android 13; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
             viewport={'width': 360, 'height': 800}
         )
         
         page = context.new_page()
         
         try:
-            # 1. Buka URL (ini akan menangani redirect dari id.shp.ee secara otomatis)
-            st.info("Membuka link dan menunggu pengalihan...")
-            page.goto(url, wait_until="commit", timeout=60000)
+            # 1. Menuju URL (Menangani redirect id.shp.ee)
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
             
-            # 2. Tunggu sampai network agak tenang
-            page.wait_for_load_state("networkidle")
+            # 2. Tunggu sebentar agar redirect selesai sempurna
+            time.sleep(5)
             
-            # 3. Scroll sedikit untuk memicu loading video (penting di Shopee)
-            page.mouse.wheel(0, 500)
-            time.sleep(3)
-            
-            # 4. Mencari video dengan beberapa selector alternatif
+            # 3. Scroll perlahan untuk memicu pemuatan video player
+            page.mouse.wheel(0, 400)
+            time.sleep(2)
+
+            # 4. Mencari elemen video
+            # Mencoba beberapa selector yang sering digunakan Shopee
             video_url = None
-            selectors = ["video", "video.shopee-video-player__video", "source"]
+            page.wait_for_selector("video", timeout=15000)
+            video_element = page.query_selector("video")
             
-            for selector in selectors:
-                el = page.query_selector(selector)
-                if el:
-                    video_url = el.get_attribute("src")
-                    if video_url: break
+            if video_element:
+                video_url = video_element.get_attribute("src")
             
-            if video_url:
-                return video_url
-            else:
-                return "Video tidak ditemukan. Coba jalankan ulang."
+            # Jika video_url ketemu tapi tipenya blob, kita ambil link aslinya
+            if video_url and video_url.startswith("blob:"):
+                # Shopee kadang menyembunyikan link di tag source
+                source_element = page.query_selector("video source")
+                if source_element:
+                    video_url = source_element.get_attribute("src")
+
+            return video_url
 
         except Exception as e:
-            return f"Terjadi kesalahan: {str(e)}"
+            return f"Error: {str(e)}"
         finally:
             browser.close()
 
-# --- UI STREAMLIT ---
-st.set_page_config(page_title="Shopee Video Scraper", page_icon="🎬")
+# --- TAMPILAN APLIKASI ---
+st.title("🧡 Shopee Video Scraper")
+st.markdown("Pastikan link dalam format `https://id.shp.ee/...` atau link video Shopee langsung.")
 
-st.title("🎬 Shopee Video Link Extractor")
-st.caption("Support link pendek: id.shp.ee")
+# Tombol Inisialisasi
+if 'browser_ready' not in st.session_state:
+    if st.button("Step 1: Siapkan Sistem Browser"):
+        with st.spinner("Sedang memasang Chromium di server..."):
+            if ensure_playwright_installed():
+                st.session_state['browser_ready'] = True
+                st.success("Sistem Siap! Silakan masukkan link.")
+else:
+    # Form Input Link
+    video_url_input = st.text_input("Link Shopee Video:", placeholder="Paste link di sini...")
 
-if 'installed' not in st.session_state:
-    with st.spinner("Menyiapkan sistem..."):
-        install_playwright_browsers()
-        st.session_state['installed'] = True
+    if st.button("Step 2: Ambil Video"):
+        if video_url_input:
+            with st.spinner("Mengekstrak video (ini memakan waktu 10-20 detik)..."):
+                result = get_shopee_video(video_url_input)
+                
+                if result and result.startswith("http"):
+                    st.success("Video Berhasil Ditemukan!")
+                    st.video(result)
+                    st.write("**Direct Link:**")
+                    st.code(result)
+                else:
+                    st.error(f"Gagal mengambil video. Pesan: {result}")
+                    st.info("Tips: Coba klik tombol 'Ambil Video' sekali lagi.")
+        else:
+            st.warning("Masukkan link-nya dulu bos!")
 
-input_url = st.text_input("Paste Link Shopee Video:", placeholder="https://id.shp.ee/...")
-
-if st.button("Extract Video"):
-    if input_url:
-        with st.spinner("Sedang mengekstrak video..."):
-            video_result = scrape_shopee_video(input_url)
-            
-            if video_result and video_result.startswith("http"):
-                st.success("Berhasil!")
-                st.video(video_result)
-                st.write("**Link Video Mentah:**")
-                st.code(video_result)
-            else:
-                st.error(video_result)
-    else:
-        st.warning("Silakan masukkan link terlebih dahulu.")
+st.divider()
+st.caption("Catatan: Gunakan secara bijak. Beberapa video mungkin diproteksi tinggi oleh Shopee.")
