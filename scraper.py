@@ -16,7 +16,7 @@ st.set_page_config(page_title="TikTok Scalper Pro", page_icon="📊", layout="wi
 @st.cache_resource
 def setup_browser():
     try:
-        # Install playwright chromium
+        # Menginstal browser Playwright
         subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
         return True
     except Exception as e:
@@ -29,15 +29,9 @@ browser_ready = setup_browser()
 # --- UTILITY FUNCTIONS ---
 def safe_int(value):
     try:
-        if value is None: return 0
-        return int(value)
+        return int(value) if value is not None else 0
     except:
         return 0
-
-def get_hashtags(text_extra):
-    if not text_extra: return ""
-    tags = [h.get("hashtagName") for h in text_extra if h.get("hashtagName")]
-    return ", ".join(filter(None, tags))
 
 # --------- Scraping Helper ---------
 async def get_video_info(url, api):
@@ -46,43 +40,26 @@ async def get_video_info(url, api):
         info = await video.info()
         
         if not info:
-            return {"video_url": url, "error": "Data tidak ditemukan"}
+            return {"video_url": url, "error": "Data tidak ditemukan (Cek URL/Token)"}
 
-        # Mapping data
         author = info.get("author", {})
         author_stats = info.get("authorStats", {})
         stats = info.get("stats", {})
-        stats_v2 = info.get("statsV2", {})
-        music = info.get("music", {})
         video_data = info.get("video", {})
 
         raw_time = info.get("createTime", 0)
-        try:
-            formatted_time = datetime.fromtimestamp(int(raw_time)).strftime("%Y-%m-%d %H:%M:%S")
-        except:
-            formatted_time = "N/A"
+        formatted_time = datetime.fromtimestamp(int(raw_time)).strftime("%Y-%m-%d %H:%M:%S") if raw_time else "N/A"
 
         return {
             "video_url": url,
             "create_time": formatted_time,
             "video_id": info.get("id") or video_data.get("id"),
-            "author_id": author.get("id"),
             "unique_id": author.get("uniqueId"),
             "nickname": author.get("nickname"),
-            "music_title": music.get("title"),
-            "is_copyrighted": music.get("isCopyrighted"),
-            "play_url": video_data.get("playAddr"),
-            "author_name": music.get("authorName"),
-            "hashtags": get_hashtags(info.get("textExtra")),
             "follower_count": safe_int(author_stats.get("followerCount")),
-            "heart_count": safe_int(author_stats.get("heart")),
-            "video_count": safe_int(author_stats.get("videoCount")),
             "like_count": safe_int(stats.get("diggCount")),
             "comment_count": safe_int(stats.get("commentCount")),
             "play_count": safe_int(stats.get("playCount")),
-            "collect_count": safe_int(stats_v2.get("collectCount") or stats.get("collectCount")),
-            "share_count": safe_int(stats.get("shareCount")),
-            "repost_count": safe_int(stats_v2.get("repostCount") or stats.get("repostCount")),
             "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
     except Exception as e:
@@ -94,10 +71,9 @@ async def run_scraper(video_urls, ms_token):
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    async with TikTokApi() as api:
-        # Kita hapus argumen custom 'args' atau 'browser_args' 
-        # dan biarkan library menangani defaultnya secara headless
-        try:
+    try:
+        async with TikTokApi() as api:
+            # Headless=True wajib untuk Streamlit Cloud
             await api.create_sessions(
                 ms_tokens=[ms_token], 
                 num_sessions=1, 
@@ -105,34 +81,30 @@ async def run_scraper(video_urls, ms_token):
                 browser="chromium",
                 headless=True
             )
-        except Exception as e:
-            st.error(f"Gagal inisialisasi session: {e}")
-            return [], []
 
-        for idx, url in enumerate(video_urls):
-            status_text.write(f"⏳ Processing {idx+1}/{len(video_urls)}: {url}")
-            data = await get_video_info(url, api)
-            
-            if "error" in data:
-                failed.append(data)
-            else:
-                results.append(data)
-            
-            progress_bar.progress((idx + 1) / len(video_urls))
-            await asyncio.sleep(2) 
+            for idx, url in enumerate(video_urls):
+                status_text.write(f"⏳ Memproses {idx+1}/{len(video_urls)}: {url}")
+                data = await get_video_info(url, api)
+                
+                if "error" in data:
+                    failed.append(data)
+                else:
+                    results.append(data)
+                
+                progress_bar.progress((idx + 1) / len(video_urls))
+                await asyncio.sleep(2) 
+    except Exception as e:
+        st.error(f"Gagal inisialisasi session: {e}")
             
     return results, failed
 
 # --------- UI STREAMLIT ---------
 st.title("🚀 TikTok Scalper Dashboard")
 
-if not browser_ready:
-    st.error("Browser Playwright gagal dimuat.")
-
 with st.sidebar:
     st.header("Settings")
     token = st.text_input("MS Token", type="password")
-    st.info("Pastikan MS Token valid dan terbaru.")
+    st.info("Gunakan MS Token terbaru dari browser.")
 
 uploaded_file = st.file_uploader("Upload Input Excel", type=["xlsx"])
 
@@ -140,34 +112,32 @@ if uploaded_file:
     df_in = pd.read_excel(uploaded_file)
     if "video_url" in df_in.columns:
         urls = df_in["video_url"].dropna().tolist()
-        st.success(f"{len(urls)} video siap diproses.")
+        st.success(f"{len(urls)} video ditemukan.")
         
-        if st.button("Mulai Scrape"):
+        if st.button("Mulai Scraping"):
             if not token:
-                st.warning("MS Token wajib diisi.")
+                st.warning("Mohon isi MS Token.")
             else:
-                try:
-                    res, fail = asyncio.run(run_scraper(urls, token))
-                    
+                res, fail = asyncio.run(run_scraper(urls, token))
+                
+                # Cek apakah ada data untuk dibuatkan Excel
+                if not res and not fail:
+                    st.error("Gagal mengambil data sama sekali. Periksa log atau ganti MS Token.")
+                else:
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        if res: pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Berhasil")
-                        if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Gagal")
+                        # Hanya buat sheet jika ada datanya
+                        if res:
+                            pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Berhasil")
+                        if fail:
+                            pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Gagal")
+                        # Jika keduanya kosong, tulis satu sheet placeholder agar tidak error
+                        if not res and not fail:
+                            pd.DataFrame([{"info": "No data"}]).to_excel(writer, index=False, sheet_name="Empty")
                     
                     st.divider()
-                    if res or fail:
-                        st.download_button(
-                            label="📥 Download Hasil (.xlsx)",
-                            data=output.getvalue(),
-                            file_name=f"tiktok_data_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                    
+                    st.download_button("📥 Download Hasil", output.getvalue(), file_name="tiktok_results.xlsx")
                     if res:
-                        st.subheader("Preview Data")
                         st.dataframe(pd.DataFrame(res))
-                
-                except Exception as e:
-                    st.error(f"Error fatal: {e}")
     else:
         st.error("Kolom 'video_url' tidak ditemukan!")
