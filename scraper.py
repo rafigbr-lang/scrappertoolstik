@@ -15,10 +15,17 @@ st.set_page_config(page_title="TikTok Scalper Pro", page_icon="📊", layout="wi
 
 @st.cache_resource
 def setup_browser():
-    subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"])
-    return True
+    try:
+        # Install playwright chromium dan dependencies sistemnya
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        subprocess.run([sys.executable, "-m", "playwright", "install-deps"], check=True)
+        return True
+    except Exception as e:
+        st.error(f"Gagal menginstal browser: {e}")
+        return False
 
-setup_browser()
+# Jalankan setup browser
+browser_ready = setup_browser()
 
 # --- UTILITY FUNCTIONS ---
 def safe_int(value):
@@ -31,7 +38,7 @@ def safe_int(value):
 def get_hashtags(text_extra):
     if not text_extra: return ""
     tags = [h.get("hashtagName") for h in text_extra if h.get("hashtagName")]
-    return ", ".join(tags)
+    return ", ".join(filter(None, tags))
 
 # --------- Scraping Helper ---------
 async def get_video_info(url, api):
@@ -40,9 +47,8 @@ async def get_video_info(url, api):
         info = await video.info()
         
         if not info:
-            return {"video_url": url, "error": "No data returned from TikTok"}
+            return {"video_url": url, "error": "TikTok tidak mengembalikan data (Mungkin URL salah/Private)"}
 
-        # Extraction Logic
         author = info.get("author", {})
         author_stats = info.get("authorStats", {})
         stats = info.get("stats", {})
@@ -50,14 +56,12 @@ async def get_video_info(url, api):
         music = info.get("music", {})
         video_data = info.get("video", {})
 
-        # Date Formatting
         raw_time = info.get("createTime", 0)
         try:
             formatted_time = datetime.fromtimestamp(int(raw_time)).strftime("%Y-%m-%d %H:%M:%S")
         except:
             formatted_time = "N/A"
 
-        # Mapping 21 Kolom yang diminta
         return {
             "video_url": url,
             "create_time": formatted_time,
@@ -91,10 +95,18 @@ async def run_scraper(video_urls, ms_token):
     status_text = st.empty()
     
     async with TikTokApi() as api:
-        await api.create_sessions(ms_tokens=[ms_token], num_sessions=1, sleep_after=3, browser="chromium")
+        # PENTING: Penambahan argumen headless dan sandbox untuk Linux Server
+        await api.create_sessions(
+            ms_tokens=[ms_token], 
+            num_sessions=1, 
+            sleep_after=5, 
+            browser="chromium",
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+        )
 
         for idx, url in enumerate(video_urls):
-            status_text.write(f"⏳ Processing {idx+1}/{len(video_urls)}: {url}")
+            status_text.write(f"⏳ Memproses {idx+1}/{len(video_urls)}: {url}")
             data = await get_video_info(url, api)
             
             if "error" in data:
@@ -103,17 +115,20 @@ async def run_scraper(video_urls, ms_token):
                 results.append(data)
             
             progress_bar.progress((idx + 1) / len(video_urls))
-            await asyncio.sleep(2) 
+            await asyncio.sleep(3) # Jeda agar tidak terkena rate limit
             
     return results, failed
 
 # --------- UI STREAMLIT ---------
 st.title("🚀 TikTok Scalper Dashboard")
 
+if not browser_ready:
+    st.error("Browser tidak siap. Pastikan dependencies terinstal.")
+
 with st.sidebar:
     st.header("Settings")
-    token = st.text_input("MS Token", type="password", value="hu02L0FHNzvsCOzu44TKmOLTeRdHzhKw7ezMAu_Rz_fs2zjXGDzxd8NHd50pKOU5CDYRP3NAa-6Frha4XeU4hiM1yKpuJv5KvHRB1n6JuPPZ2thX5b94E4A-iT6avWkzgrn73ku_9xy9UbaUNbSED8d7y3M=")
-    st.info("Input file Excel harus memiliki kolom 'video_url'")
+    token = st.text_input("MS Token", type="password", help="Dapatkan MS Token dari cookies browser TikTok")
+    st.info("Upload file Excel yang memiliki kolom bernama 'video_url'")
 
 uploaded_file = st.file_uploader("Upload Input Excel", type=["xlsx"])
 
@@ -121,22 +136,39 @@ if uploaded_file:
     df_in = pd.read_excel(uploaded_file)
     if "video_url" in df_in.columns:
         urls = df_in["video_url"].dropna().tolist()
-        st.success(f"Ready to scrape {len(urls)} videos")
+        st.success(f"Ditemukan {len(urls)} video siap di-scrape.")
         
         if st.button("Start Scraping"):
-            res, fail = asyncio.run(run_scraper(urls, token))
-            
-            # Create Excel output
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                if res: pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Success")
-                if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Failed")
-            
-            st.divider()
-            st.download_button("📥 Download Scraped Data", output.getvalue(), file_name="tiktok_full_results.xlsx")
-            
-            if res:
-                st.subheader("Results Preview")
-                st.dataframe(pd.DataFrame(res))
+            if not token:
+                st.warning("Mohon isi MS Token terlebih dahulu.")
+            else:
+                # Menjalankan event loop asyncio dengan benar
+                try:
+                    res, fail = asyncio.run(run_scraper(urls, token))
+                    
+                    # Buat file output Excel di memori
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        if res: pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Success")
+                        if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Failed")
+                    
+                    st.divider()
+                    st.download_button(
+                        label="📥 Download Scraped Data",
+                        data=output.getvalue(),
+                        file_name=f"tiktok_results_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    
+                    if res:
+                        st.subheader("Preview Hasil")
+                        st.dataframe(pd.DataFrame(res))
+                    if fail:
+                        st.subheader("Gagal Diambil")
+                        st.warning(f"{len(fail)} video gagal diproses.")
+                        st.dataframe(pd.DataFrame(fail))
+                
+                except Exception as e:
+                    st.error(f"Terjadi kesalahan saat scraping: {e}")
     else:
-        st.error("Column 'video_url' not found!")
+        st.error("Kolom 'video_url' tidak ditemukan di file Excel!")
