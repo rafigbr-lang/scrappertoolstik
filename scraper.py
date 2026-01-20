@@ -16,15 +16,14 @@ st.set_page_config(page_title="TikTok Scalper Pro", page_icon="📊", layout="wi
 @st.cache_resource
 def setup_browser():
     try:
-        # Hanya jalankan install chromium. 
-        # Dependencies sistem (install-deps) harus ada di packages.txt
+        # Install playwright chromium
         subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
         return True
     except Exception as e:
         st.error(f"Gagal menginstal browser: {e}")
         return False
 
-# Jalankan setup browser saat aplikasi dimuat
+# Jalankan setup browser
 browser_ready = setup_browser()
 
 # --- UTILITY FUNCTIONS ---
@@ -47,8 +46,9 @@ async def get_video_info(url, api):
         info = await video.info()
         
         if not info:
-            return {"video_url": url, "error": "Data tidak ditemukan (Cek URL/Akun)"}
+            return {"video_url": url, "error": "Data tidak ditemukan"}
 
+        # Mapping data
         author = info.get("author", {})
         author_stats = info.get("authorStats", {})
         stats = info.get("stats", {})
@@ -95,15 +95,19 @@ async def run_scraper(video_urls, ms_token):
     status_text = st.empty()
     
     async with TikTokApi() as api:
-        # PERBAIKAN: Menggunakan browser_args untuk menampung argumen Playwright
-        await api.create_sessions(
-            ms_tokens=[ms_token], 
-            num_sessions=1, 
-            sleep_after=5, 
-            browser="chromium",
-            headless=True,
-            browser_args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-        )
+        # Kita hapus argumen custom 'args' atau 'browser_args' 
+        # dan biarkan library menangani defaultnya secara headless
+        try:
+            await api.create_sessions(
+                ms_tokens=[ms_token], 
+                num_sessions=1, 
+                sleep_after=5, 
+                browser="chromium",
+                headless=True
+            )
+        except Exception as e:
+            st.error(f"Gagal inisialisasi session: {e}")
+            return [], []
 
         for idx, url in enumerate(video_urls):
             status_text.write(f"⏳ Processing {idx+1}/{len(video_urls)}: {url}")
@@ -123,12 +127,12 @@ async def run_scraper(video_urls, ms_token):
 st.title("🚀 TikTok Scalper Dashboard")
 
 if not browser_ready:
-    st.error("Browser Playwright gagal dimuat. Cek log aplikasi.")
+    st.error("Browser Playwright gagal dimuat.")
 
 with st.sidebar:
     st.header("Settings")
     token = st.text_input("MS Token", type="password")
-    st.info("Upload file Excel dengan kolom 'video_url'")
+    st.info("Pastikan MS Token valid dan terbaru.")
 
 uploaded_file = st.file_uploader("Upload Input Excel", type=["xlsx"])
 
@@ -151,12 +155,13 @@ if uploaded_file:
                         if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Gagal")
                     
                     st.divider()
-                    st.download_button(
-                        label="📥 Download Hasil (.xlsx)",
-                        data=output.getvalue(),
-                        file_name=f"tiktok_data_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    if res or fail:
+                        st.download_button(
+                            label="📥 Download Hasil (.xlsx)",
+                            data=output.getvalue(),
+                            file_name=f"tiktok_data_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
                     
                     if res:
                         st.subheader("Preview Data")
