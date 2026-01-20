@@ -95,14 +95,14 @@ async def run_scraper(video_urls, ms_token):
     status_text = st.empty()
     
     async with TikTokApi() as api:
-        # Konfigurasi khusus untuk Linux Server (Streamlit Cloud)
+        # PERBAIKAN: Menggunakan browser_args untuk menampung argumen Playwright
         await api.create_sessions(
             ms_tokens=[ms_token], 
             num_sessions=1, 
             sleep_after=5, 
             browser="chromium",
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            browser_args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
         )
 
         for idx, url in enumerate(video_urls):
@@ -115,7 +115,7 @@ async def run_scraper(video_urls, ms_token):
                 results.append(data)
             
             progress_bar.progress((idx + 1) / len(video_urls))
-            await asyncio.sleep(2) # Delay antar request
+            await asyncio.sleep(2) 
             
     return results, failed
 
@@ -143,10 +143,8 @@ if uploaded_file:
                 st.warning("MS Token wajib diisi.")
             else:
                 try:
-                    # Jalankan proses async
                     res, fail = asyncio.run(run_scraper(urls, token))
                     
-                    # Simpan hasil ke Excel
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         if res: pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Berhasil")
