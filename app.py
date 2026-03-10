@@ -13,339 +13,212 @@ import subprocess
 logging.getLogger("TikTokApi.tiktok").setLevel(logging.CRITICAL)
 
 st.set_page_config(
-    page_title="TikTok Tracker Pro",
+    page_title="TikTok Tracker",
     page_icon="🎵",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- CUSTOM CSS ---
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
-/* Root Variables */
-:root {
-    --bg-dark: #0A0A0F;
-    --bg-card: #111118;
-    --bg-elevated: #1A1A24;
-    --accent-pink: #FF2D55;
-    --accent-cyan: #00F5FF;
-    --accent-purple: #BF5AF2;
-    --text-primary: #F0F0F5;
-    --text-secondary: #8888AA;
-    --border: rgba(255,255,255,0.06);
-}
-
-/* Global Reset */
 html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif !important;
-    background-color: var(--bg-dark) !important;
-    color: var(--text-primary) !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
+.stApp { background: #F0F2F8 !important; }
 
-.stApp {
-    background: var(--bg-dark) !important;
-    background-image:
-        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(255,45,85,0.07) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 90% 110%, rgba(0,245,255,0.05) 0%, transparent 60%) !important;
-    min-height: 100vh;
-}
-
-/* Sidebar */
 [data-testid="stSidebar"] {
-    background: var(--bg-card) !important;
-    border-right: 1px solid var(--border) !important;
+    background: #FFFFFF !important;
+    border-right: 1px solid #E4E7EF !important;
 }
+[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 
-[data-testid="stSidebar"] .stMarkdown h1,
-[data-testid="stSidebar"] .stMarkdown h2,
-[data-testid="stSidebar"] .stMarkdown h3 {
-    font-family: 'Syne', sans-serif !important;
-    color: var(--text-primary) !important;
+#MainMenu, footer, header { visibility: hidden; }
+[data-testid="stToolbar"] { display: none; }
+
+.topbar {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0 0 1.5rem 0;
+    font-size: 0.82rem; color: #9199B1; font-weight: 500;
 }
+.topbar .sep { color: #C8CEDF; margin: 0 0.2rem; }
+.topbar .active { color: #1A1D2E; font-weight: 700; }
 
-/* Page Header */
-.hero-header {
-    padding: 2rem 0 1.5rem 0;
-    margin-bottom: 2rem;
-    border-bottom: 1px solid var(--border);
+.page-title {
+    font-size: 2rem; font-weight: 800; color: #1A1D2E;
+    letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 0.2rem;
 }
+.page-subtitle { font-size: 0.82rem; color: #9199B1; font-weight: 500; margin-bottom: 1.8rem; }
 
-.hero-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 2.8rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #FF2D55 0%, #BF5AF2 50%, #00F5FF 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
-    margin: 0;
+.card-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0.9rem; margin-bottom: 0.9rem;
 }
-
-.hero-subtitle {
-    font-size: 0.95rem;
-    color: var(--text-secondary);
-    margin-top: 0.4rem;
-    letter-spacing: 0.02em;
+.card-grid-3 {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 0.9rem; margin-bottom: 1rem;
 }
-
-/* Cards */
 .metric-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 1.4rem 1.6rem;
-    position: relative;
-    overflow: hidden;
-    transition: border-color 0.2s ease;
+    background: #FFFFFF; border-radius: 16px;
+    padding: 1.2rem 1.4rem; border: 1px solid #E8ECF4;
+    display: flex; align-items: flex-start; gap: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+    animation: fadeUp 0.35s ease both;
 }
-
-.metric-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent-pink), var(--accent-purple), var(--accent-cyan));
-    opacity: 0;
-    transition: opacity 0.2s ease;
+.metric-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-1px); }
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
-
-.metric-card:hover::before { opacity: 1; }
-.metric-card:hover { border-color: rgba(255,255,255,0.12); }
-
-.metric-label {
-    font-size: 0.72rem;
-    font-weight: 500;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    margin-bottom: 0.4rem;
+.card-icon {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.05rem; flex-shrink: 0;
 }
+.icon-purple { background: #EDE9FF; }
+.icon-orange { background: #FFF1E6; }
+.icon-blue   { background: #E6F0FF; }
+.icon-green  { background: #E6FAF2; }
+.icon-red    { background: #FFE9EC; }
+.icon-amber  { background: #FFF8E1; }
+.icon-pink   { background: #FFE9F6; }
+.icon-teal   { background: #E6FAF8; }
+.icon-indigo { background: #EDEFFF; }
 
-.metric-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1;
+.card-body { flex: 1; min-width: 0; }
+.card-label {
+    font-size: 0.68rem; font-weight: 700; color: #9199B1;
+    letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.2rem;
 }
-
-.metric-icon {
-    position: absolute;
-    top: 1.2rem; right: 1.4rem;
-    font-size: 1.4rem;
-    opacity: 0.25;
+.card-value {
+    font-size: 1.65rem; font-weight: 800; color: #1A1D2E;
+    line-height: 1.15; letter-spacing: -0.02em;
 }
+.card-sub { font-size: 0.72rem; color: #B0B8CF; font-weight: 500; margin-top: 0.12rem; }
 
-/* Upload Zone */
-.upload-zone {
-    background: var(--bg-card);
-    border: 1.5px dashed rgba(255,45,85,0.3);
-    border-radius: 20px;
-    padding: 3rem 2rem;
-    text-align: center;
-    transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.upload-zone:hover {
-    border-color: rgba(255,45,85,0.6);
-    background: rgba(255,45,85,0.03);
-}
-
-/* Buttons */
 .stButton > button {
-    font-family: 'Syne', sans-serif !important;
-    font-weight: 700 !important;
-    font-size: 0.9rem !important;
-    letter-spacing: 0.05em !important;
-    background: linear-gradient(135deg, #FF2D55, #BF5AF2) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 12px !important;
-    padding: 0.7rem 2rem !important;
-    transition: all 0.2s ease !important;
-    box-shadow: 0 4px 20px rgba(255,45,85,0.25) !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-weight: 700 !important; font-size: 0.82rem !important;
+    background: #7C3AED !important; color: white !important;
+    border: none !important; border-radius: 10px !important;
+    padding: 0.55rem 1.4rem !important;
+    box-shadow: 0 2px 8px rgba(124,58,237,0.25) !important;
+    transition: all 0.15s !important;
 }
-
 .stButton > button:hover {
+    background: #6D28D9 !important;
+    box-shadow: 0 4px 16px rgba(124,58,237,0.35) !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 8px 30px rgba(255,45,85,0.4) !important;
 }
-
-.stButton > button:active {
-    transform: translateY(0) !important;
-}
-
-/* Download Button */
 .stDownloadButton > button {
-    font-family: 'Syne', sans-serif !important;
-    font-weight: 600 !important;
-    background: transparent !important;
-    color: var(--accent-cyan) !important;
-    border: 1.5px solid var(--accent-cyan) !important;
-    border-radius: 12px !important;
-    padding: 0.6rem 1.8rem !important;
-    transition: all 0.2s ease !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-weight: 700 !important; font-size: 0.82rem !important;
+    background: transparent !important; color: #22C55E !important;
+    border: 1.5px solid #22C55E !important; border-radius: 10px !important;
+    padding: 0.5rem 1.2rem !important; transition: all 0.15s !important;
+}
+.stDownloadButton > button:hover { background: #F0FDF4 !important; }
+
+.section-label {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #9199B1;
 }
 
-.stDownloadButton > button:hover {
-    background: rgba(0,245,255,0.08) !important;
-    box-shadow: 0 0 20px rgba(0,245,255,0.15) !important;
+.creator-table {
+    background: #FFFFFF; border-radius: 16px;
+    border: 1px solid #E8ECF4; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.table-header {
+    display: grid;
+    grid-template-columns: 2.5fr 1fr 1fr 1fr 1.5fr 1fr;
+    padding: 0.7rem 1.4rem; border-bottom: 1px solid #F0F2F8;
+    background: #FAFBFD;
+}
+.table-header span {
+    font-size: 0.65rem; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #9199B1;
+}
+.table-footer {
+    padding: 0.8rem 1.4rem; text-align: center;
+    font-size: 0.73rem; color: #B0B8CF; font-weight: 500;
+    border-top: 1px solid #F0F2F8; background: #FAFBFD;
 }
 
-/* Inputs */
-.stTextInput > div > div > input,
-.stPasswordInput > div > div > input {
-    background: var(--bg-elevated) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 10px !important;
-    color: var(--text-primary) !important;
-    font-family: 'DM Sans', sans-serif !important;
+.stTextInput > div > div > input, .stPasswordInput > div > div > input {
+    background: #FFFFFF !important; border: 1.5px solid #E4E7EF !important;
+    border-radius: 10px !important; color: #1A1D2E !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-size: 0.85rem !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+}
+.stTextInput > div > div > input:focus {
+    border-color: #7C3AED !important;
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.1) !important;
 }
 
-.stTextInput > div > div > input:focus,
-.stPasswordInput > div > div > input:focus {
-    border-color: rgba(255,45,85,0.5) !important;
-    box-shadow: 0 0 0 2px rgba(255,45,85,0.1) !important;
-}
-
-/* Progress Bar */
 .stProgress > div > div > div {
-    background: linear-gradient(90deg, #FF2D55, #BF5AF2, #00F5FF) !important;
+    background: linear-gradient(90deg, #7C3AED, #A78BFA) !important;
     border-radius: 999px !important;
 }
+.stProgress > div > div { background: #E8ECF4 !important; border-radius: 999px !important; }
 
-.stProgress > div > div {
-    background: var(--bg-elevated) !important;
-    border-radius: 999px !important;
-}
-
-/* Dataframe */
-.stDataFrame {
-    border-radius: 16px !important;
-    overflow: hidden !important;
-    border: 1px solid var(--border) !important;
-}
-
-/* Alerts */
-.stSuccess {
-    background: rgba(0,245,150,0.08) !important;
-    border: 1px solid rgba(0,245,150,0.2) !important;
-    border-radius: 12px !important;
-    color: #00F595 !important;
-}
-
-.stError {
-    background: rgba(255,45,85,0.08) !important;
-    border: 1px solid rgba(255,45,85,0.25) !important;
-    border-radius: 12px !important;
-}
-
-.stInfo {
-    background: rgba(0,245,255,0.06) !important;
-    border: 1px solid rgba(0,245,255,0.2) !important;
-    border-radius: 12px !important;
-    color: var(--accent-cyan) !important;
-}
-
-.stWarning {
-    background: rgba(255,190,0,0.08) !important;
-    border: 1px solid rgba(255,190,0,0.25) !important;
-    border-radius: 12px !important;
-}
-
-/* Divider */
-hr {
-    border: none !important;
-    border-top: 1px solid var(--border) !important;
-    margin: 2rem 0 !important;
-}
-
-/* File Uploader */
 [data-testid="stFileUploader"] {
-    background: var(--bg-card) !important;
-    border: 1.5px dashed rgba(255,45,85,0.3) !important;
-    border-radius: 16px !important;
-    padding: 1rem !important;
-    transition: border-color 0.2s ease;
+    background: #FFFFFF !important; border: 1.5px dashed #C4C9DC !important;
+    border-radius: 14px !important; transition: border-color 0.2s;
+}
+[data-testid="stFileUploader"]:hover { border-color: #7C3AED !important; }
+
+.stSuccess > div {
+    background: #F0FDF4 !important; border: 1px solid #BBF7D0 !important;
+    border-radius: 12px !important; color: #15803D !important;
+}
+.stError > div {
+    background: #FFF1F2 !important; border: 1px solid #FECDD3 !important;
+    border-radius: 12px !important;
+}
+.stInfo > div {
+    background: #F5F3FF !important; border: 1px solid #DDD6FE !important;
+    border-radius: 12px !important; color: #6D28D9 !important;
 }
 
-[data-testid="stFileUploader"]:hover {
-    border-color: rgba(255,45,85,0.5) !important;
+.streamlit-expanderHeader {
+    background: #FFFFFF !important; border: 1px solid #E8ECF4 !important;
+    border-radius: 12px !important; color: #1A1D2E !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important;
 }
-
-/* Section Headers */
-.section-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: -0.01em;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+[data-testid="stDataFrame"] {
+    border-radius: 14px !important; border: 1px solid #E8ECF4 !important; overflow: hidden !important;
 }
-
-/* Status badge */
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: rgba(0,245,150,0.1);
-    color: #00F595;
-    border: 1px solid rgba(0,245,150,0.2);
-    border-radius: 999px;
-    padding: 0.25rem 0.8rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
+hr { border: none !important; border-top: 1px solid #E8ECF4 !important; margin: 1.5rem 0 !important; }
+label {
+    font-size: 0.72rem !important; font-weight: 700 !important;
+    color: #9199B1 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important;
 }
-
-/* Log area */
-.log-container {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1rem 1.2rem;
-    font-family: 'DM Mono', 'Fira Code', monospace;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    max-height: 200px;
-    overflow-y: auto;
+.log-box {
+    background: #F8F9FC; border: 1px solid #E8ECF4; border-radius: 12px;
+    padding: 0.9rem 1.1rem; font-size: 0.78rem; color: #6B7494;
+    font-family: 'Fira Code', monospace; max-height: 180px; overflow-y: auto; line-height: 1.8;
 }
-
-/* Sidebar labels */
-[data-testid="stSidebar"] label {
-    color: var(--text-secondary) !important;
-    font-size: 0.8rem !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase !important;
-}
-
-/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+::-webkit-scrollbar-thumb { background: #D1D5E8; border-radius: 999px; }
 
-/* Expander */
-.streamlit-expanderHeader {
-    background: var(--bg-card) !important;
-    border-radius: 12px !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text-primary) !important;
-    font-family: 'Syne', sans-serif !important;
+.sidebar-logo { padding: 0 0.5rem 1.5rem 0.5rem; border-bottom: 1px solid #F0F2F8; margin-bottom: 1.5rem; }
+.sidebar-logo-title { font-size: 1.15rem; font-weight: 800; color: #1A1D2E; letter-spacing: -0.02em; }
+.sidebar-logo-sub {
+    font-size: 0.65rem; color: #9199B1; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; margin-top: 0.15rem;
 }
-
-/* Hide Streamlit branding */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-header { visibility: hidden; }
+.token-status {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0;
+    border-radius: 999px; padding: 0.2rem 0.7rem;
+    font-size: 0.7rem; font-weight: 700; margin-top: 0.5rem;
+}
+.dot { width:6px; height:6px; border-radius:50%; background:#22C55E; display:inline-block; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -353,65 +226,50 @@ header { visibility: hidden; }
 # --- BROWSER SETUP ---
 @st.cache_resource(show_spinner=False)
 def setup_browser():
-    subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"],
-                   capture_output=True)
+    subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], capture_output=True)
     return True
 
 setup_browser()
 
 
-# --- UTILITY FUNCTIONS ---
-def safe_int(value):
-    try:
-        if value is None: return 0
-        return int(value)
-    except:
-        return 0
+# --- UTILITIES ---
+def safe_int(v):
+    try: return 0 if v is None else int(v)
+    except: return 0
 
-def format_number(n):
+def fmt(n):
     if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(n)
 
 def get_hashtags(text_extra):
     if not text_extra: return ""
-    tags = [h.get("hashtagName") for h in text_extra if h.get("hashtagName")]
-    return ", ".join(tags)
+    return ", ".join(h.get("hashtagName") for h in text_extra if h.get("hashtagName"))
 
 
-# --- SCRAPING LOGIC ---
+# --- SCRAPING ---
 async def get_video_info(url, api):
     try:
-        video = api.video(url=url)
-        info = await video.info()
+        info = await api.video(url=url).info()
         if not info:
-            return {"video_url": url, "error": "No data returned from TikTok"}
-
+            return {"video_url": url, "error": "No data returned"}
         author = info.get("author", {})
         author_stats = info.get("authorStats", {})
         stats = info.get("stats", {})
         stats_v2 = info.get("statsV2", {})
         music = info.get("music", {})
         video_data = info.get("video", {})
-
-        raw_time = info.get("createTime", 0)
         try:
-            formatted_time = datetime.fromtimestamp(int(raw_time)).strftime("%Y-%m-%d %H:%M:%S")
+            fmt_time = datetime.fromtimestamp(int(info.get("createTime", 0))).strftime("%Y-%m-%d %H:%M")
         except:
-            formatted_time = "N/A"
-
+            fmt_time = "N/A"
         return {
-            "video_url": url,
-            "create_time": formatted_time,
+            "video_url": url, "create_time": fmt_time,
             "video_id": info.get("id") or video_data.get("id"),
-            "author_id": author.get("id"),
-            "unique_id": author.get("uniqueId"),
-            "nickname": author.get("nickname"),
-            "music_title": music.get("title"),
-            "is_copyrighted": music.get("isCopyrighted"),
-            "play_url": video_data.get("playAddr"),
-            "author_name": music.get("authorName"),
-            "hashtags": get_hashtags(info.get("textExtra")),
+            "author_id": author.get("id"), "unique_id": author.get("uniqueId"),
+            "nickname": author.get("nickname"), "music_title": music.get("title"),
+            "is_copyrighted": music.get("isCopyrighted"), "play_url": video_data.get("playAddr"),
+            "author_name": music.get("authorName"), "hashtags": get_hashtags(info.get("textExtra")),
             "follower_count": safe_int(author_stats.get("followerCount")),
             "heart_count": safe_int(author_stats.get("heart")),
             "video_count": safe_int(author_stats.get("videoCount")),
@@ -421,271 +279,304 @@ async def get_video_info(url, api):
             "collect_count": safe_int(stats_v2.get("collectCount") or stats.get("collectCount")),
             "share_count": safe_int(stats.get("shareCount")),
             "repost_count": safe_int(stats_v2.get("repostCount") or stats.get("repostCount")),
-            "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
     except Exception as e:
         return {"video_url": url, "error": str(e)}
 
 
-async def run_scraper(video_urls, ms_token, progress_bar, status_text, log_area):
-    results, failed = [], []
-    logs = []
-
+async def run_scraper(video_urls, ms_token, pb, st_text, log_area):
+    results, failed, logs = [], [], []
     async with TikTokApi() as api:
-        await api.create_sessions(
-            ms_tokens=[ms_token], num_sessions=1,
-            sleep_after=3, browser="chromium"
-        )
-
+        await api.create_sessions(ms_tokens=[ms_token], num_sessions=1, sleep_after=3, browser="chromium")
         for idx, url in enumerate(video_urls):
-            short_url = url[:60] + "..." if len(url) > 60 else url
-            status_text.markdown(
-                f'<div class="metric-label">Processing {idx+1} of {len(video_urls)}</div>'
-                f'<div style="font-size:0.85rem; color:#8888AA; margin-top:0.2rem;">{short_url}</div>',
+            short = url[:55] + "…" if len(url) > 55 else url
+            st_text.markdown(
+                f'<div class="section-label">Processing {idx+1} / {len(video_urls)}</div>'
+                f'<div style="font-size:0.78rem;color:#9199B1;margin-top:0.2rem;">{short}</div>',
                 unsafe_allow_html=True
             )
-
             data = await get_video_info(url, api)
-
             if "error" in data:
                 failed.append(data)
-                logs.append(f"✗ [{idx+1}] FAILED — {data.get('error', 'Unknown error')}")
+                logs.append(f'<span style="color:#DC2626;">✗ [{idx+1}]</span> {data.get("error","Unknown")}')
             else:
                 results.append(data)
-                logs.append(f"✓ [{idx+1}] OK — @{data.get('unique_id', '?')} · {format_number(data.get('play_count', 0))} plays")
-
-            log_area.markdown(
-                '<div class="log-container">' +
-                "<br>".join(logs[-10:]) +
-                '</div>',
-                unsafe_allow_html=True
-            )
-            progress_bar.progress((idx + 1) / len(video_urls))
+                logs.append(f'<span style="color:#16A34A;">✓ [{idx+1}]</span> @{data.get("unique_id","?")} · {fmt(data.get("play_count",0))} plays')
+            log_area.markdown('<div class="log-box">' + "<br>".join(logs[-10:]) + '</div>', unsafe_allow_html=True)
+            pb.progress((idx + 1) / len(video_urls))
             await asyncio.sleep(2)
-
     return results, failed
 
 
-# ==================== UI ====================
-
-# --- SIDEBAR ---
+# ══════════════════════════════════
+#  SIDEBAR
+# ══════════════════════════════════
 with st.sidebar:
     st.markdown("""
-        <div style="padding: 1rem 0 1.5rem 0;">
-            <div style="font-family:'Syne',sans-serif; font-size:1.4rem; font-weight:800;
-                        background:linear-gradient(135deg,#FF2D55,#BF5AF2);
-                        -webkit-background-clip:text; -webkit-text-fill-color:transparent;">
-                🎵 TikTrack
-            </div>
-            <div style="font-size:0.72rem; color:#8888AA; letter-spacing:0.1em; margin-top:0.2rem;">
-                PRO SCRAPER v2.0
-            </div>
+        <div class="sidebar-logo">
+            <div class="sidebar-logo-title">🎵 TikTrack</div>
+            <div class="sidebar-logo-sub">Affiliate Tracker Pro</div>
         </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="metric-label">Authentication</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label" style="margin-bottom:0.5rem;">MS Token</div>', unsafe_allow_html=True)
     token = st.text_input(
-        "MS Token",
-        type="password",
+        "MS Token", type="password",
         value="hu02L0FHNzvsCOzu44TKmOLTeRdHzhKw7ezMAu_Rz_fs2zjXGDzxd8NHd50pKOU5CDYRP3NAa-6Frha4XeU4hiM1yKpuJv5KvHRB1n6JuPPZ2thX5b94E4A-iT6avWkzgrn73ku_9xy9UbaUNbSED8d7y3M=",
         label_visibility="collapsed"
     )
-
     if token:
-        st.markdown('<div class="status-badge">● Token Active</div>', unsafe_allow_html=True)
-    else:
-        st.warning("Enter your MS Token to continue")
+        st.markdown('<div class="token-status"><div class="dot"></div>&nbsp;Token Active</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="metric-label">How to get MS Token</div>', unsafe_allow_html=True)
-    with st.expander("Step-by-step guide"):
+    with st.expander("How to get MS Token"):
         st.markdown("""
-        1. Open **TikTok** in your browser
-        2. Log in to your account
-        3. Open **DevTools** → Application tab
-        4. Go to **Cookies** → `tiktok.com`
-        5. Find the cookie named `msToken`
-        6. Copy its value and paste above
+        1. Open **TikTok** in browser & log in
+        2. Open **DevTools** → Application tab
+        3. Cookies → `tiktok.com`
+        4. Find `msToken` → copy the value
         """)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="metric-label">Requirements</div>', unsafe_allow_html=True)
-    st.info("Upload an Excel file with a **`video_url`** column containing TikTok URLs.")
 
-
-# --- MAIN CONTENT ---
-
-# Header
+# ══════════════════════════════════
+#  MAIN
+# ══════════════════════════════════
 st.markdown("""
-    <div class="hero-header">
-        <div class="hero-title">TikTok Tracker Pro</div>
-        <div class="hero-subtitle">Extract detailed analytics from TikTok videos at scale</div>
+    <div class="topbar">
+        <span>← Back</span>
+        <span class="sep">|</span>
+        <span>Affiliate Tracker</span>
+        <span class="sep">›</span>
+        <span class="active">TikTok Scraper</span>
     </div>
+    <div class="page-title">TikTok Scraper</div>
+    <div class="page-subtitle">Created Mar 10, 2026</div>
 """, unsafe_allow_html=True)
 
+# Upload
+st.markdown('<div class="section-label" style="margin-bottom:0.5rem;">Upload Input File</div>', unsafe_allow_html=True)
+uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"], label_visibility="collapsed")
 
-# Upload Section
-col_upload, col_preview = st.columns([1.2, 1], gap="large")
-
-with col_upload:
-    st.markdown('<div class="section-title">📂 Upload Input File</div>', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader(
-        "Drop your Excel file here",
-        type=["xlsx"],
-        label_visibility="collapsed"
-    )
-
-with col_preview:
-    st.markdown('<div class="section-title">📋 What we extract</div>', unsafe_allow_html=True)
+# ── NO FILE ──
+if not uploaded_file:
     st.markdown("""
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">🎬 Video ID & URL</div>
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">👤 Author Info</div>
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">❤️ Likes & Comments</div>
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">▶️ Play Count</div>
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">🔁 Reposts & Shares</div>
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">🎵 Music & Copyright</div>
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">🏷️ Hashtags</div>
-        <div style="font-size:0.8rem; color:#8888AA; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05);">👥 Follower Count</div>
-    </div>
+        <div class="card-grid">
+            <div class="metric-card">
+                <div class="card-icon icon-purple">👥</div>
+                <div class="card-body">
+                    <div class="card-label">Total Creators</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">0 active</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-orange">📦</div>
+                <div class="card-body">
+                    <div class="card-label">Samples Sent</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">delivered or received</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-blue">🏠</div>
+                <div class="card-body">
+                    <div class="card-label">Direct / MCN</div>
+                    <div class="card-value">0/0</div>
+                    <div class="card-sub">contact type</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-green">📈</div>
+                <div class="card-body">
+                    <div class="card-label">Active</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">creators posting</div>
+                </div>
+            </div>
+        </div>
+        <div class="card-grid-3">
+            <div class="metric-card">
+                <div class="card-icon icon-indigo">🎬</div>
+                <div class="card-body">
+                    <div class="card-label">Total Short Videos</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">locked (all)</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-green">✅</div>
+                <div class="card-body">
+                    <div class="card-label">Posted</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">short videos</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-amber">⏳</div>
+                <div class="card-body">
+                    <div class="card-label">Not Posted</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">short videos</div>
+                </div>
+            </div>
+        </div>
+        <div class="card-grid-3">
+            <div class="metric-card">
+                <div class="card-icon icon-pink">📡</div>
+                <div class="card-body">
+                    <div class="card-label">Live Stream Locks</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">contracts</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-red">🔴</div>
+                <div class="card-body">
+                    <div class="card-label">Total Sessions</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">live sessions locked</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-teal">⭐</div>
+                <div class="card-body">
+                    <div class="card-label">Exclusive Lives</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">exclusive streams</div>
+                </div>
+            </div>
+        </div>
+        <div class="creator-table">
+            <div class="table-header">
+                <span>Creator</span>
+                <span>Phone (WA)</span>
+                <span>Contact</span>
+                <span>Samples</span>
+                <span>Videos &amp; Streams</span>
+                <span>Actions</span>
+            </div>
+            <div style="text-align:center;padding:2.5rem;color:#B0B8CF;font-size:0.82rem;font-weight:500;">
+                No creators yet — upload an Excel file to begin scraping.
+            </div>
+            <div class="table-footer">0 of 0 creators</div>
+        </div>
     """, unsafe_allow_html=True)
 
-
-# File Loaded State
-if uploaded_file:
+# ── FILE LOADED ──
+else:
     try:
         df_in = pd.read_excel(uploaded_file)
-
         if "video_url" not in df_in.columns:
-            st.error("❌ Column `video_url` not found in your Excel file. Please check the column name.")
+            st.error("❌ Column `video_url` not found. Please check your Excel file.")
             st.stop()
 
         urls = df_in["video_url"].dropna().tolist()
+        est  = round(len(urls) * 5 / 60, 1)
+
+        st.markdown(f"""
+            <div class="card-grid">
+                <div class="metric-card">
+                    <div class="card-icon icon-purple">👥</div>
+                    <div class="card-body">
+                        <div class="card-label">Total Creators</div>
+                        <div class="card-value">{len(urls)}</div>
+                        <div class="card-sub">URLs ready</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-icon icon-orange">📋</div>
+                    <div class="card-body">
+                        <div class="card-label">Total Rows</div>
+                        <div class="card-value">{len(df_in)}</div>
+                        <div class="card-sub">in uploaded file</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-icon icon-amber">⏱️</div>
+                    <div class="card-body">
+                        <div class="card-label">Est. Duration</div>
+                        <div class="card-value">{est}m</div>
+                        <div class="card-sub">approximate time</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-icon icon-indigo">📊</div>
+                    <div class="card-body">
+                        <div class="card-label">Output Columns</div>
+                        <div class="card-value">21</div>
+                        <div class="card-sub">data fields</div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        with st.expander(f"👁️ Preview — {len(urls)} URLs loaded"):
+            st.dataframe(df_in[["video_url"]].head(20), use_container_width=True, hide_index=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Stats row
-        m1, m2, m3, m4 = st.columns(4)
-
-        with m1:
-            st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-icon">📋</div>
-                    <div class="metric-label">Total URLs</div>
-                    <div class="metric-value">{len(urls)}</div>
-                </div>""", unsafe_allow_html=True)
-
-        with m2:
-            st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-icon">📊</div>
-                    <div class="metric-label">Total Rows</div>
-                    <div class="metric-value">{len(df_in)}</div>
-                </div>""", unsafe_allow_html=True)
-
-        with m3:
-            est_minutes = round(len(urls) * 5 / 60, 1)
-            st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-icon">⏱️</div>
-                    <div class="metric-label">Est. Time</div>
-                    <div class="metric-value">{est_minutes}m</div>
-                </div>""", unsafe_allow_html=True)
-
-        with m4:
-            st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-icon">📤</div>
-                    <div class="metric-label">Output Cols</div>
-                    <div class="metric-value">21</div>
-                </div>""", unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # Preview toggle
-        with st.expander("👁️ Preview uploaded URLs"):
-            st.dataframe(
-                df_in[["video_url"]].head(20),
-                use_container_width=True,
-                hide_index=True
-            )
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # Action row
-        btn_col, hint_col = st.columns([1, 3])
-        with btn_col:
+        c1, c2, _ = st.columns([1, 1, 4])
+        with c1:
             start = st.button("🚀 Start Scraping", use_container_width=True)
-        with hint_col:
-            st.markdown(
-                '<div style="padding-top:0.7rem; font-size:0.8rem; color:#8888AA;">'
-                f'Will process {len(urls)} videos with ~2s delay between requests'
-                '</div>',
-                unsafe_allow_html=True
-            )
 
-        # --- SCRAPING ENGINE ---
         if start:
             if not token:
-                st.error("⛔ Please enter your MS Token in the sidebar before scraping.")
+                st.error("⛔ Please enter your MS Token in the sidebar.")
                 st.stop()
 
             st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown('<div class="section-title">⚡ Live Progress</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-label" style="margin-bottom:0.8rem;">⚡ Live Progress</div>', unsafe_allow_html=True)
 
-            prog_col, status_col = st.columns([2, 3])
-            with prog_col:
-                progress_bar = st.progress(0)
-            with status_col:
-                status_text = st.empty()
-
+            p_col, s_col = st.columns([2, 3])
+            with p_col: pb = st.progress(0)
+            with s_col: st_text = st.empty()
             log_area = st.empty()
 
             with st.spinner(""):
-                res, fail = asyncio.run(run_scraper(urls, token, progress_bar, status_text, log_area))
+                res, fail = asyncio.run(run_scraper(urls, token, pb, st_text, log_area))
 
             st.markdown("<br>", unsafe_allow_html=True)
+            rate = round(len(res) / len(urls) * 100) if urls else 0
 
-            # Results summary
-            r1, r2, r3 = st.columns(3)
-            with r1:
-                st.markdown(f"""
+            st.markdown(f"""
+                <div class="card-grid-3">
                     <div class="metric-card">
-                        <div class="metric-icon" style="color:#00F595;">✓</div>
-                        <div class="metric-label">Successful</div>
-                        <div class="metric-value" style="color:#00F595;">{len(res)}</div>
-                    </div>""", unsafe_allow_html=True)
-            with r2:
-                st.markdown(f"""
+                        <div class="card-icon icon-green">✅</div>
+                        <div class="card-body">
+                            <div class="card-label">Successful</div>
+                            <div class="card-value" style="color:#16A34A;">{len(res)}</div>
+                            <div class="card-sub">videos scraped</div>
+                        </div>
+                    </div>
                     <div class="metric-card">
-                        <div class="metric-icon" style="color:#FF2D55;">✗</div>
-                        <div class="metric-label">Failed</div>
-                        <div class="metric-value" style="color:#FF2D55;">{len(fail)}</div>
-                    </div>""", unsafe_allow_html=True)
-            with r3:
-                rate = round(len(res) / len(urls) * 100) if urls else 0
-                st.markdown(f"""
+                        <div class="card-icon icon-red">❌</div>
+                        <div class="card-body">
+                            <div class="card-label">Failed</div>
+                            <div class="card-value" style="color:#DC2626;">{len(fail)}</div>
+                            <div class="card-sub">errors encountered</div>
+                        </div>
+                    </div>
                     <div class="metric-card">
-                        <div class="metric-icon">📈</div>
-                        <div class="metric-label">Success Rate</div>
-                        <div class="metric-value">{rate}%</div>
-                    </div>""", unsafe_allow_html=True)
+                        <div class="card-icon icon-purple">📈</div>
+                        <div class="card-body">
+                            <div class="card-label">Success Rate</div>
+                            <div class="card-value">{rate}%</div>
+                            <div class="card-sub">completion</div>
+                        </div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
-            # Build Excel
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                if res:
-                    pd.DataFrame(res).to_excel(writer, index=False, sheet_name="✅ Success")
-                if fail:
-                    pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="❌ Failed")
+                if res:  pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Success")
+                if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Failed")
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            dl_col, _ = st.columns([1, 3])
-            with dl_col:
+            dl1, _ = st.columns([1, 4])
+            with dl1:
                 st.download_button(
-                    "📥 Download Results (.xlsx)",
-                    data=output.getvalue(),
+                    "📥 Export XLSX", data=output.getvalue(),
                     file_name=f"tiktok_results_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
@@ -693,35 +584,15 @@ if uploaded_file:
 
             if res:
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown('<div class="section-title">📊 Results Preview</div>', unsafe_allow_html=True)
-
+                st.markdown('<div class="section-label" style="margin-bottom:0.6rem;">Results Preview</div>', unsafe_allow_html=True)
                 df_res = pd.DataFrame(res)
-                display_cols = [
-                    "unique_id", "nickname", "play_count", "like_count",
-                    "comment_count", "share_count", "follower_count", "hashtags", "create_time"
-                ]
-                available_cols = [c for c in display_cols if c in df_res.columns]
-
-                st.dataframe(
-                    df_res[available_cols],
-                    use_container_width=True,
-                    hide_index=True,
-                    height=400
-                )
+                show  = ["unique_id","nickname","play_count","like_count","comment_count","share_count","follower_count","hashtags","create_time"]
+                avail = [c for c in show if c in df_res.columns]
+                st.dataframe(df_res[avail], use_container_width=True, hide_index=True, height=380)
 
             if fail:
-                with st.expander(f"⚠️ View {len(fail)} failed URLs"):
+                with st.expander(f"⚠️ {len(fail)} Failed URLs"):
                     st.dataframe(pd.DataFrame(fail), use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error(f"Error reading file: {str(e)}")
-
-else:
-    # Empty state
-    st.markdown("""
-        <div style="text-align:center; padding:3rem 0; color:#8888AA;">
-            <div style="font-size:3rem; margin-bottom:1rem; opacity:0.4;">📂</div>
-            <div style="font-size:0.9rem;">Upload an Excel file to get started</div>
-            <div style="font-size:0.78rem; margin-top:0.4rem; opacity:0.7;">Supported format: .xlsx with a <code>video_url</code> column</div>
-        </div>
-    """, unsafe_allow_html=True)
+        st.error(f"Error reading file: {e}")
