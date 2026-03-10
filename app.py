@@ -165,6 +165,11 @@ html, body, [class*="css"] {
 }
 .stProgress > div > div { background: #E8ECF4 !important; border-radius: 999px !important; }
 
+[data-testid="stFileUploader"] {
+    background: #FFFFFF !important; border: 1.5px dashed #C4C9DC !important;
+    border-radius: 14px !important; transition: border-color 0.2s;
+}
+[data-testid="stFileUploader"]:hover { border-color: #7C3AED !important; }
 
 .stSuccess > div {
     background: #F0FDF4 !important; border: 1px solid #BBF7D0 !important;
@@ -197,49 +202,6 @@ label {
     padding: 0.9rem 1.1rem; font-size: 0.78rem; color: #6B7494;
     font-family: 'Fira Code', monospace; max-height: 180px; overflow-y: auto; line-height: 1.8;
 }
-
-/* URL Input Box */
-.url-input-wrap {
-    background: #FFFFFF;
-    border: 1.5px solid #E4E7EF;
-    border-radius: 16px;
-    padding: 1.2rem 1.4rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    margin-bottom: 1rem;
-}
-.url-input-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 0.8rem;
-}
-.url-input-title {
-    font-size: 0.78rem; font-weight: 700; color: #1A1D2E;
-    letter-spacing: 0.03em;
-}
-.url-count-badge {
-    background: #EDE9FF; color: #7C3AED;
-    border-radius: 999px; padding: 0.2rem 0.7rem;
-    font-size: 0.7rem; font-weight: 700;
-}
-
-/* Textarea */
-.stTextArea textarea {
-    background: #F8F9FC !important;
-    border: 1.5px solid #E4E7EF !important;
-    border-radius: 12px !important;
-    color: #1A1D2E !important;
-    font-family: 'Fira Code', 'DM Mono', monospace !important;
-    font-size: 0.82rem !important;
-    line-height: 1.7 !important;
-    resize: vertical !important;
-    box-shadow: none !important;
-    transition: border-color 0.2s !important;
-}
-.stTextArea textarea:focus {
-    border-color: #7C3AED !important;
-    box-shadow: 0 0 0 3px rgba(124,58,237,0.08) !important;
-    background: #FFFFFF !important;
-}
-.stTextArea textarea::placeholder { color: #B0B8CF !important; }
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #D1D5E8; border-radius: 999px; }
@@ -392,171 +354,245 @@ st.markdown("""
     <div class="page-subtitle">Created Mar 10, 2026</div>
 """, unsafe_allow_html=True)
 
-# ── URL INPUT BOX ──
-st.markdown("""
-    <div class="url-input-wrap">
-        <div class="url-input-header">
-            <div class="url-input-title">🔗 Paste TikTok Video URLs</div>
-        </div>
-        <div style="font-size:0.75rem; color:#9199B1; margin-bottom:0.7rem; line-height:1.6;">
-            Enter one URL per line. Supports <code>vt.tiktok.com</code>, <code>vm.tiktok.com</code>, and full TikTok URLs.
-        </div>
-    </div>
-""", unsafe_allow_html=True)
+# Upload
+st.markdown('<div class="section-label" style="margin-bottom:0.5rem;">Upload Input File</div>', unsafe_allow_html=True)
+uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"], label_visibility="collapsed")
 
-raw_input = st.text_area(
-    "URLs",
-    placeholder="vt.tiktok.com/ZSjExample1/\nvt.tiktok.com/ZSjExample2/\nvt.tiktok.com/ZSjExample3/\n...",
-    height=220,
-    label_visibility="collapsed"
-)
-
-# Parse URLs: strip whitespace, remove empty lines, handle numbered lists like "1. url"
-import re
-def parse_urls(raw: str):
-    urls = []
-    for line in raw.strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        # Strip leading numbering like "1.", "1)", "- ", "• "
-        line = re.sub(r'^[\d]+[.)]\s*', '', line)
-        line = re.sub(r'^[-•]\s*', '', line)
-        line = line.strip()
-        if line:
-            # Add https:// if missing
-            if not line.startswith("http"):
-                line = "https://" + line
-            urls.append(line)
-    return urls
-
-urls = parse_urls(raw_input)
-est  = round(len(urls) * 5 / 60, 1) if urls else 0
-
-# ── LIVE COUNTER CARDS ──
-st.markdown(f"""
-    <div class="card-grid">
-        <div class="metric-card">
-            <div class="card-icon icon-purple">🔗</div>
-            <div class="card-body">
-                <div class="card-label">URLs Entered</div>
-                <div class="card-value">{len(urls)}</div>
-                <div class="card-sub">ready to scrape</div>
+# ── NO FILE ──
+if not uploaded_file:
+    st.markdown("""
+        <div class="card-grid">
+            <div class="metric-card">
+                <div class="card-icon icon-purple">👥</div>
+                <div class="card-body">
+                    <div class="card-label">Total Creators</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">0 active</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-orange">📦</div>
+                <div class="card-body">
+                    <div class="card-label">Samples Sent</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">delivered or received</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-blue">🏠</div>
+                <div class="card-body">
+                    <div class="card-label">Direct / MCN</div>
+                    <div class="card-value">0/0</div>
+                    <div class="card-sub">contact type</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-green">📈</div>
+                <div class="card-body">
+                    <div class="card-label">Active</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">creators posting</div>
+                </div>
             </div>
         </div>
-        <div class="metric-card">
-            <div class="card-icon icon-amber">⏱️</div>
-            <div class="card-body">
-                <div class="card-label">Est. Duration</div>
-                <div class="card-value">{est}m</div>
-                <div class="card-sub">approximate time</div>
-            </div>
-        </div>
-        <div class="metric-card">
-            <div class="card-icon icon-indigo">📊</div>
-            <div class="card-body">
-                <div class="card-label">Output Columns</div>
-                <div class="card-value">21</div>
-                <div class="card-sub">data fields per video</div>
-            </div>
-        </div>
-        <div class="metric-card">
-            <div class="card-icon icon-green">✅</div>
-            <div class="card-body">
-                <div class="card-label">Status</div>
-                <div class="card-value" style="font-size:1rem; padding-top:0.3rem;">{"Ready" if urls else "Waiting"}</div>
-                <div class="card-sub">{"paste URLs above" if not urls else f"{len(urls)} URL{'s' if len(urls)>1 else ''} queued"}</div>
-            </div>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
-
-# Preview parsed URLs
-if urls:
-    with st.expander(f"👁️ Preview — {len(urls)} URL{'s' if len(urls)>1 else ''} detected"):
-        preview_df = pd.DataFrame({"#": range(1, len(urls)+1), "video_url": urls})
-        st.dataframe(preview_df, use_container_width=True, hide_index=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# CTA
-c1, _ = st.columns([1, 5])
-with c1:
-    start = st.button("🚀 Start Scraping", use_container_width=True, disabled=(len(urls) == 0))
-
-if start:
-    if not token:
-        st.error("⛔ Please enter your MS Token in the sidebar.")
-        st.stop()
-    if not urls:
-        st.error("⛔ Please enter at least one TikTok URL above.")
-        st.stop()
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown('<div class="section-label" style="margin-bottom:0.8rem;">⚡ Live Progress</div>', unsafe_allow_html=True)
-
-    p_col, s_col = st.columns([2, 3])
-    with p_col: pb = st.progress(0)
-    with s_col: st_text = st.empty()
-    log_area = st.empty()
-
-    with st.spinner(""):
-        res, fail = asyncio.run(run_scraper(urls, token, pb, st_text, log_area))
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    rate = round(len(res) / len(urls) * 100) if urls else 0
-
-    st.markdown(f"""
         <div class="card-grid-3">
+            <div class="metric-card">
+                <div class="card-icon icon-indigo">🎬</div>
+                <div class="card-body">
+                    <div class="card-label">Total Short Videos</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">locked (all)</div>
+                </div>
+            </div>
             <div class="metric-card">
                 <div class="card-icon icon-green">✅</div>
                 <div class="card-body">
-                    <div class="card-label">Successful</div>
-                    <div class="card-value" style="color:#16A34A;">{len(res)}</div>
-                    <div class="card-sub">videos scraped</div>
+                    <div class="card-label">Posted</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">short videos</div>
                 </div>
             </div>
             <div class="metric-card">
-                <div class="card-icon icon-red">❌</div>
+                <div class="card-icon icon-amber">⏳</div>
                 <div class="card-body">
-                    <div class="card-label">Failed</div>
-                    <div class="card-value" style="color:#DC2626;">{len(fail)}</div>
-                    <div class="card-sub">errors encountered</div>
-                </div>
-            </div>
-            <div class="metric-card">
-                <div class="card-icon icon-purple">📈</div>
-                <div class="card-body">
-                    <div class="card-label">Success Rate</div>
-                    <div class="card-value">{rate}%</div>
-                    <div class="card-sub">completion</div>
+                    <div class="card-label">Not Posted</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">short videos</div>
                 </div>
             </div>
         </div>
+        <div class="card-grid-3">
+            <div class="metric-card">
+                <div class="card-icon icon-pink">📡</div>
+                <div class="card-body">
+                    <div class="card-label">Live Stream Locks</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">contracts</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-red">🔴</div>
+                <div class="card-body">
+                    <div class="card-label">Total Sessions</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">live sessions locked</div>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="card-icon icon-teal">⭐</div>
+                <div class="card-body">
+                    <div class="card-label">Exclusive Lives</div>
+                    <div class="card-value">0</div>
+                    <div class="card-sub">exclusive streams</div>
+                </div>
+            </div>
+        </div>
+        <div class="creator-table">
+            <div class="table-header">
+                <span>Creator</span>
+                <span>Phone (WA)</span>
+                <span>Contact</span>
+                <span>Samples</span>
+                <span>Videos &amp; Streams</span>
+                <span>Actions</span>
+            </div>
+            <div style="text-align:center;padding:2.5rem;color:#B0B8CF;font-size:0.82rem;font-weight:500;">
+                No creators yet — upload an Excel file to begin scraping.
+            </div>
+            <div class="table-footer">0 of 0 creators</div>
+        </div>
     """, unsafe_allow_html=True)
 
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        if res:  pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Success")
-        if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Failed")
+# ── FILE LOADED ──
+else:
+    try:
+        df_in = pd.read_excel(uploaded_file)
+        if "video_url" not in df_in.columns:
+            st.error("❌ Column `video_url` not found. Please check your Excel file.")
+            st.stop()
 
-    dl1, _ = st.columns([1, 4])
-    with dl1:
-        st.download_button(
-            "📥 Export XLSX", data=output.getvalue(),
-            file_name=f"tiktok_results_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        urls = df_in["video_url"].dropna().tolist()
+        est  = round(len(urls) * 5 / 60, 1)
 
-    if res:
+        st.markdown(f"""
+            <div class="card-grid">
+                <div class="metric-card">
+                    <div class="card-icon icon-purple">👥</div>
+                    <div class="card-body">
+                        <div class="card-label">Total Creators</div>
+                        <div class="card-value">{len(urls)}</div>
+                        <div class="card-sub">URLs ready</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-icon icon-orange">📋</div>
+                    <div class="card-body">
+                        <div class="card-label">Total Rows</div>
+                        <div class="card-value">{len(df_in)}</div>
+                        <div class="card-sub">in uploaded file</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-icon icon-amber">⏱️</div>
+                    <div class="card-body">
+                        <div class="card-label">Est. Duration</div>
+                        <div class="card-value">{est}m</div>
+                        <div class="card-sub">approximate time</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="card-icon icon-indigo">📊</div>
+                    <div class="card-body">
+                        <div class="card-label">Output Columns</div>
+                        <div class="card-value">21</div>
+                        <div class="card-sub">data fields</div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        with st.expander(f"👁️ Preview — {len(urls)} URLs loaded"):
+            st.dataframe(df_in[["video_url"]].head(20), use_container_width=True, hide_index=True)
+
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<div class="section-label" style="margin-bottom:0.6rem;">Results Preview</div>', unsafe_allow_html=True)
-        df_res = pd.DataFrame(res)
-        show  = ["unique_id","nickname","play_count","like_count","comment_count","share_count","follower_count","hashtags","create_time"]
-        avail = [c for c in show if c in df_res.columns]
-        st.dataframe(df_res[avail], use_container_width=True, hide_index=True, height=380)
 
-    if fail:
-        with st.expander(f"⚠️ {len(fail)} Failed URLs"):
-            st.dataframe(pd.DataFrame(fail), use_container_width=True, hide_index=True)
+        c1, c2, _ = st.columns([1, 1, 4])
+        with c1:
+            start = st.button("🚀 Start Scraping", use_container_width=True)
+
+        if start:
+            if not token:
+                st.error("⛔ Please enter your MS Token in the sidebar.")
+                st.stop()
+
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown('<div class="section-label" style="margin-bottom:0.8rem;">⚡ Live Progress</div>', unsafe_allow_html=True)
+
+            p_col, s_col = st.columns([2, 3])
+            with p_col: pb = st.progress(0)
+            with s_col: st_text = st.empty()
+            log_area = st.empty()
+
+            with st.spinner(""):
+                res, fail = asyncio.run(run_scraper(urls, token, pb, st_text, log_area))
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            rate = round(len(res) / len(urls) * 100) if urls else 0
+
+            st.markdown(f"""
+                <div class="card-grid-3">
+                    <div class="metric-card">
+                        <div class="card-icon icon-green">✅</div>
+                        <div class="card-body">
+                            <div class="card-label">Successful</div>
+                            <div class="card-value" style="color:#16A34A;">{len(res)}</div>
+                            <div class="card-sub">videos scraped</div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="card-icon icon-red">❌</div>
+                        <div class="card-body">
+                            <div class="card-label">Failed</div>
+                            <div class="card-value" style="color:#DC2626;">{len(fail)}</div>
+                            <div class="card-sub">errors encountered</div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="card-icon icon-purple">📈</div>
+                        <div class="card-body">
+                            <div class="card-label">Success Rate</div>
+                            <div class="card-value">{rate}%</div>
+                            <div class="card-sub">completion</div>
+                        </div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                if res:  pd.DataFrame(res).to_excel(writer, index=False, sheet_name="Success")
+                if fail: pd.DataFrame(fail).to_excel(writer, index=False, sheet_name="Failed")
+
+            dl1, _ = st.columns([1, 4])
+            with dl1:
+                st.download_button(
+                    "📥 Export XLSX", data=output.getvalue(),
+                    file_name=f"tiktok_results_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+            if res:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown('<div class="section-label" style="margin-bottom:0.6rem;">Results Preview</div>', unsafe_allow_html=True)
+                df_res = pd.DataFrame(res)
+                show  = ["unique_id","nickname","play_count","like_count","comment_count","share_count","follower_count","hashtags","create_time"]
+                avail = [c for c in show if c in df_res.columns]
+                st.dataframe(df_res[avail], use_container_width=True, hide_index=True, height=380)
+
+            if fail:
+                with st.expander(f"⚠️ {len(fail)} Failed URLs"):
+                    st.dataframe(pd.DataFrame(fail), use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
