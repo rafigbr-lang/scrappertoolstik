@@ -725,3 +725,8 @@ else:
             <div style="font-size:0.78rem; margin-top:0.4rem; opacity:0.7;">Supported format: .xlsx with a <code>video_url</code> column</div>
         </div>
     """, unsafe_allow_html=True)
+
+# --- CONFIGURATION ---
+logging.getLogger("TikTokApi.tiktok").setLevel(logging.CRITICAL)
+logging.getLogger("streamlit.runtime.scriptrunner_utils").setLevel(logging.CRITICAL)  # ← add this
+logging.getLogger("streamlit.runtime.scriptrunner").setLevel(logging.CRITICAL)        # ← and this
